@@ -17,13 +17,15 @@ int main (int argc, char *argv[])
   char* port = argv[1];
   int baud_rate = atoi (argv[2]);
 
-  int fd = open_port (port, baud_rate);
+  int fd = serial_setup (port, baud_rate);
   if (fd == -1) {
-    close_port (fd);
+    cout << "Cannot open port " << port << endl;
+    return -1;
   }
 
-  char* command = "F1";
-  write_to_port (fd, command);
+  char* command = "i2";
+  int status = serial_send (fd, command, 2);
+  cout << "Write status = " << status << endl;
 
   return 0;
 }

@@ -10,4 +10,10 @@ set (CMAKE_BUILD_TYPE DEBUG)
 
 set (CMAKE_BINARY_DIR  $(CMAKE_SOURCE_DIR)/../build)
 
+include_directories (/usr/include/xercesc ./source .)
+
 add_executable (test_serial test_serial.cpp serial.cpp serial.h)
+add_executable (test_filter_wheel test_filterwheel.cpp filter_wheel.cpp config_parser.hpp serial.cpp)
+
+
+target_link_libraries (test_filter_wheel xerces-c)

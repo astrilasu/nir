@@ -1,125 +1,196 @@
 #include "serial.h"
-#include <stdio.h>
-#include <memory.h>
 
-int get_baud (int baud_rate)
+/*------------------------------------------------------------------------------
+ * int serial_recv()
+ * Get data from the serial port.
+ *----------------------------------------------------------------------------*/
+
+int serial_recv(int fd, void *response, int length)
 {
-  int baudr = 0;
-  switch (baud_rate) {
-    case      50 : baudr = B50;
-                   break;
-    case      75 : baudr = B75;
-                   break;
-    case     110 : baudr = B110;
-                   break;
-    case     134 : baudr = B134;
-                   break;
-    case     150 : baudr = B150;
-                   break;
-    case     200 : baudr = B200;
-                   break;
-    case     300 : baudr = B300;
-                   break;
-    case     600 : baudr = B600;
-                   break;
-    case    1200 : baudr = B1200;
-                   break;
-    case    1800 : baudr = B1800;
-                   break;
-    case    2400 : baudr = B2400;
-                   break;
-    case    4800 : baudr = B4800;
-                   break;
-    case    9600 : baudr = B9600;
-                   break;
-    case   19200 : baudr = B19200;
-                   break;
-    case   38400 : baudr = B38400;
-                   break;
-    case   57600 : baudr = B57600;
-                   break;
-    case  115200 : baudr = B115200;
-                   break;
-    case  230400 : baudr = B230400;
-                   break;
-    case  460800 : baudr = B460800;
-                   break;
-    case  500000 : baudr = B500000;
-                   break;
-    case  576000 : baudr = B576000;
-                   break;
-    case  921600 : baudr = B921600;
-                   break;
-    case 1000000 : baudr = B1000000;
-                   break;
-    default      : fprintf (stderr, "Invalid baud rate %d \n", baud_rate);
-                   return -1;
-  }
-  return baudr;
-}
-int open_port (char* port, int baud_rate)
+    // Declare variables.
+    int status = -1;
+    int port_count = 0;
+
+    struct timeval timeout;
+    fd_set serial_fds;
+
+    timeout.tv_sec = SERIAL_TIMEOUT_SECS;
+    timeout.tv_usec = SERIAL_TIMEOUT_USECS;
+
+    FD_ZERO(&serial_fds);
+    FD_SET(fd, &serial_fds);
+
+    port_count = select(SERIAL_MAX_PORTS, &serial_fds, NULL, NULL, &timeout);
+
+    if ((port_count == 0) || (!FD_ISSET(fd, &serial_fds)))
+    {
+        status = -2;
+    }
+
+    status = read(fd, response, length);
+
+    if (status == -1)
+    {
+        perror("read");
+    }
+
+    return status;
+} // end serial_recv()
+
+
+/*------------------------------------------------------------------------------
+ * int serial_send()
+ * Writes commands to serial port.
+ *----------------------------------------------------------------------------*/
+
+int serial_send(int fd, void *command, int length)
 {
-  int status = 0;
-  int fd = 0;
+    // Declare variables.
+    int status = 0;
+    status = write(fd, command, length);
+    
+    
+    // ********* Note to AM to revisit the following line. -AM
+    tcdrain(fd);
 
-  baud_rate = get_baud (baud_rate);
-  if (baud_rate == -1) {
-    return -1;
-  }
+    if (status < 0)
+    {
+        perror("write");
+    }
 
-  fd = open (port, O_RDWR | O_NOCTTY | O_NDELAY);
-  if (fd == -1) {
-    fprintf (stderr, "Unable to open serial port - %s ..\n", port);
+    return status;
+} // end serial_send()
+
+
+/*------------------------------------------------------------------------------
+ * int serial_setup()
+ * Opens a serial port.
+ *----------------------------------------------------------------------------*/
+
+int serial_setup(char *port_name, int baud)
+{
+    // Declare variables.
+    int fd = -1;
+    int status = -1;
+    struct termios options;
+   
+    // Open port.
+    fd = open(port_name, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    if (fd < 1)
+    {
+        perror("open");
+        return fd;
+    }
+
+	// Get the current options for the port.
+	tcgetattr(fd, &options);
+
+	// Set the baud rate.
+    switch (baud)
+    {
+    case 1200:
+        cfsetispeed(&options, B1200);
+        cfsetospeed(&options, B1200);
+        break;
+
+    case 2400:
+        cfsetispeed(&options, B2400);
+        cfsetospeed(&options, B2400);
+        break;
+
+    case 4800:
+        cfsetispeed(&options, B4800);
+        cfsetospeed(&options, B4800);
+        break;
+
+    case 9600:
+        cfsetispeed(&options, B9600);
+        cfsetospeed(&options, B9600);
+        break;
+
+    case 19200:
+        cfsetispeed(&options, B19200);
+        cfsetospeed(&options, B19200);
+        break;
+
+    case 38400:
+        cfsetispeed(&options, B38400);
+        cfsetospeed(&options, B38400);
+        break;
+
+    case 57600:
+        cfsetispeed(&options, B57600);
+        cfsetospeed(&options, B57600);
+        break;
+
+    case 115200:
+        cfsetispeed(&options, B115200);
+        cfsetospeed(&options, B115200);
+        break;
+
+    case 230400:
+        cfsetispeed(&options, B230400);
+        cfsetospeed(&options, B230400);
+        break;
+
+    default: //Bad baud rate passed.
+        close(fd);
+        return -2;
+    }
+
+	// Set the number of data bits.
+	options.c_cflag &= ~CSIZE;
+    options.c_cflag |= CS8;
+
+	// Set the number of stop bits to 1.
+	options.c_cflag &= ~CSTOPB;
+	
+	// Set parity to none.
+	options.c_cflag &=~PARENB;
+	
+	// Set for non-canonical (raw processing, no echo, etc.).
+   	options.c_iflag = IGNPAR; // ignore parity check
+   	options.c_oflag = 0; // raw output
+	options.c_lflag = 0; // raw input
+
+	// Time-Outs -- won't work with NDELAY option in the call to open.
+	options.c_cc[VMIN]  = 0;  // Block reading until RX x characers. If x = 0, it is non-blocking.
+	options.c_cc[VTIME] = 10; // Inter-Character Timer -- i.e. timeout= x*.1 s.
+
+	// Set local mode and enable the receiver.
+	options.c_cflag |= (CLOCAL | CREAD);
+
+	// Purge serial port buffers.
+    tcflush(fd, TCIFLUSH);
+
+	// Set the new options for the port.
+	status = tcsetattr(fd, TCSANOW, &options);
+	if (status != 0)
+	{
+        fprintf(stderr, "%s(). Failed to set up options.\n", __FUNCTION__);
+    	return status;
+    }
+
     return fd;
-  }
-  else {
-    fprintf (stderr, "Opened serial port - %s ..\n", port);
-  }
+} // end serial_setup()
 
-  struct termios new_port_settings;
-  struct termios old_port_settings;
 
-  status = tcgetattr (fd, &old_port_settings);
-  if (status == -1) {
-    close_port (fd);
-    fprintf(stderr, "Unable to read port settings for %s.\n", port);
-    return status;
-  }
+/*------------------------------------------------------------------------------
+ * int serial_bytes_available()
+ * Checks to see how many bytes are available to read on the serial stack.
+ *----------------------------------------------------------------------------*/
 
-  memset (&new_port_settings, 0, sizeof (new_port_settings));  // clear the new struct 
-
-  new_port_settings.c_cflag = baud_rate |   // specified baud rate 
-                              CS8 |         //  Number of bits per byte
-                              CREAD;        //  Enable reciever, otherwise no characters will be recieved
-
-  new_port_settings.c_iflag = IGNPAR;       // Ignore bits with parity error
-  new_port_settings.c_oflag = 0;            // Output attributes
-  new_port_settings.c_lflag = 0;            // Controls various functions like echo, signal, flush etc
-  new_port_settings.c_cc[VMIN] = 0;         // block untill n bytes are received 
-  new_port_settings.c_cc[VTIME] = 0;        // block untill a timer expires (n * 100 mSec.) 
-
-  status = tcsetattr (fd, TCSANOW, &new_port_settings);
-
-  //fcntl (fd, F_SETFL, 0);
-
-  if (status == -1) {
-    close_port (fd);
-    fprintf (stderr, "Unable to adjust port settings for %s.\n", port);
-    return status;
-  }
-  return fd;
-}
-
-int write_to_port (int fd, char* buffer)
+int serial_bytes_available(int fd)
 {
-  int bytes = write (fd, buffer, strlen (buffer));
-  if (bytes < 0) {
-    fprintf (stderr, "Writing %d bytes of buffer failed.\n", strlen (buffer));
-  }
-  return bytes;
-}
+    // Declare variables.
+    int bytes_available;
+    int status = 0;
 
-void close_port (int fd)
-{
-  close (fd);
-}
+    status = ioctl(fd, FIONREAD, &bytes_available);
+    if (status == -1)
+    {
+        perror("ioctl");
+    }
+
+    return bytes_available;
+} // end serial_bytes_available()
