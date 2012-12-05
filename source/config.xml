@@ -1,0 +1,28 @@
+<IRCamera width="1024" height="1024" filterwheel="1" pantilt="0" imu="1" imu_port="/dev/ttyUSB1" ocean_server = "1" ocean_server_port="/dev/ttyACM0">
+	<ExposureSettings>
+		<filter skip = "0" wavelength = "450" duration = "5,50,100" />
+		<filter skip = "0" wavelength = "532" duration = "100"/>
+		<filter skip = "0" wavelength = "671" duration = "100,500,1000"/>
+		<filter skip = "0" wavelength = "750" duration = "100,200,500" />
+		<filter skip = "0" wavelength = "800" duration = "100"/>
+		<filter skip = "0" wavelength = "860" duration = "100"/>
+		<filter skip = "0" wavelength = "900" duration = "160" />
+		<filter skip = "0" wavelength = "930" duration = "320"/>
+		<filter skip = "0" wavelength = "990" duration = "1280"/>
+		<filter skip = "0" wavelength = "1000" duration = "640" />
+		<filter skip = "0" wavelength = "1046" duration = "3000"/>
+	</ExposureSettings>
+	<PanSettings>
+		<pan angle="1.5"/>
+		<pan angle="-1.5"/>
+		<pan angle="0.5"/>
+	</PanSettings>
+	<TiltSettings>
+		<tilt angle="31.5"/>
+		<tilt angle="-91.5"/>
+		<tilt angle="20.5"/>
+	</TiltSettings> 
+	<CaptureSettings flag="0">
+		<position pan_angle = "1.5" tilt_angle = "31.5"/>
+	</CaptureSettings>
+</IRCamera>
