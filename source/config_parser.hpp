@@ -59,6 +59,19 @@ class ConfigParser
       return filters[id];
     }
 
+    int getExposureForFilter (int wavelength) 
+    { 
+      int duration = -1;
+      for (int i = 0; i < exposure.size (); i++) {
+        pair <int, int> p = exposure[i];
+        if (p.first == wavelength) {
+          duration = p.second;
+          break;
+        }
+      }
+      return duration;
+    }
+
     string& get_fw_port (int id) 
     { 
       return fw_ports[id]; 
@@ -77,6 +90,7 @@ class ConfigParser
 
   protected:
     map <int, int> filters[2];
+    vector <pair <int, int> > exposure;
     string fw_ports[2];
     int fw_bauds[2];
 };
@@ -85,7 +99,7 @@ class ConfigParserDOM : public ConfigParser
 	public:
 		ConfigParserDOM()
     { 
-			try{
+			try {
 				XMLPlatformUtils::Initialize();
 			}
 			catch(XMLException &e){
@@ -128,7 +142,7 @@ class ConfigParserDOM : public ConfigParser
 bool ConfigParserDOM::parse()
 {
 	bool status = true;
-	try{
+	try {
 		m_parser->setValidationScheme(XercesDOMParser::Val_Never);
 		m_parser->setDoNamespaces(false);
 		m_parser->setDoSchema(false);
@@ -140,7 +154,7 @@ bool ConfigParserDOM::parse()
 		DOMDocument *xml_doc = m_parser->getDocument();
 
 		DOMElement *ir_camera = xml_doc->getDocumentElement();
-		if(!ir_camera){
+		if(!ir_camera) {
 			status = false;
 			setErrorMessage ("Empty XML document");
 			return status;
@@ -164,7 +178,7 @@ bool ConfigParserDOM::parse()
         getFilterWheelConfig (item, filter_wheel_id++);
       }
 			if (strcmp (tag_name, "ExposureSettings") == 0) {
-        //getExposureSettings (item);
+        getExposureSettings (item);
       }
 		}
 	}
@@ -246,7 +260,7 @@ bool ConfigParserDOM::getFilterWheelConfig (DOMNode *node, int id)
 			cout << "\tWavelength = " << val << endl;
       wavelength = val;
 		}
-		catch(bad_lexical_cast& e){
+		catch(bad_lexical_cast& e) {
 			sprintf(error_message, "Invalid value for slot at node # %d in <ExposureSettings>", counter);
 			throw MyException(error_message);
 		}
@@ -256,7 +270,7 @@ bool ConfigParserDOM::getFilterWheelConfig (DOMNode *node, int id)
   cout << "Number of filters = " << getFilterWheelById (id).size () << endl;
   return status;
 }
-bool ConfigParserDOM::getExposureSettings(DOMNode *node)
+bool ConfigParserDOM::getExposureSettings (DOMNode *node)
 {
 	cout << "Node = ExposureSettings\n";
 	
@@ -272,27 +286,46 @@ bool ConfigParserDOM::getExposureSettings(DOMNode *node)
 		const XMLCh *tag = item->getNodeName();
 		const char *tag_name = XMLString::transcode(tag);
 
-		if(strcmp(tag_name, "filter") != 0){
+		if(strcmp(tag_name, "filter") != 0) {
 			sprintf(error_message,"<filter> node missing at position %d in element <ExposureSettings>", counter);
 			throw MyException(error_message); 
 		}
 
 		DOMElement *element = dynamic_cast<DOMElement*>(item);
-		const XMLCh *exposure_attr_element = element->getAttribute(attr_exposure);
+		const XMLCh *wavelength_attr_element = element->getAttribute(attr_wavelength);
+    int wavelength = 0;
+    int duration = 0;
 
+
+		const XMLCh *exposure_attr_element = element->getAttribute(attr_exposure);
 		const char *s = XMLString::transcode(exposure_attr_element); 
-		if(strlen(s)==0){
-			sprintf(error_message, "duration attribute missing at <filter> node # %d in <ExposureSettings>", counter);
+		if (strlen(s)==0) {
+			sprintf(error_message, "wavelength attribute missing at <filter> node # %d in <ExposureSettings>", counter);
 			throw MyException(error_message);
 		}
-		try{
-			double val = lexical_cast<double>(s);
-			cout << "\tValue = " << val << endl;
+		try {
+			wavelength = lexical_cast<int> (s);
+			cout << "\tWavelength = " << wavelength << "\t";
 		}
-		catch(bad_lexical_cast& e){
+		catch (bad_lexical_cast& e) {
 			sprintf(error_message, "Invalid value for duration at node # %d in <ExposureSettings>", counter);
 			throw MyException(error_message);
 		}
+
+		s = XMLString::transcode (exposure_attr_element); 
+		if(strlen(s)==0) {
+			sprintf(error_message, "duration attribute missing at <filter> node # %d in <ExposureSettings>", counter);
+			throw MyException(error_message);
+		}
+		try {
+			duration = lexical_cast<int>(s);
+			cout << "\tDuration = " << duration << endl;
+		}
+		catch (bad_lexical_cast& e) {
+			sprintf(error_message, "Invalid value for duration at node # %d in <ExposureSettings>", counter);
+			throw MyException(error_message);
+		}
+    exposure.push_back (make_pair <int, int> (wavelength, duration));
 		counter++;
 	}
 }

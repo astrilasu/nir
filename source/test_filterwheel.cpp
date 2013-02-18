@@ -23,6 +23,7 @@ int main (int argc, char *argv[])
     return -1;
   }
 
+
   FilterWheel fw[2];
 
   cout << "Setting up filter wheel 1..\n";
