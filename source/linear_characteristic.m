@@ -13,9 +13,7 @@ plot (d(:,1), d(:,2), 'r*');
 hold on;
 plot (x, y);
 str = '';
-%str = sprintf ('Exposure time in milliseconds for WAVELENGTH = %s', wavelength);
-str = sprintf ('Exposure time in milliseconds for DARK FRAME'); 
-str
+str = sprintf ('Exposure time in milliseconds for WAVELENGTH = %s', wavelength);
 xlabel (str);
 ylabel ('Mean pixel value in the center 100x100 image');
 saveas (h, outfile, format);
