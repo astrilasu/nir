@@ -1,5 +1,6 @@
 #include "filterwheel.h"
 #include <iostream>
+#include <stdexcept>
 #include <cstdio>
 using namespace std;
 
@@ -57,4 +58,19 @@ void FilterWheel::gotoFilterById (int id)
   cout << "Command = " << command << " :: Status = " << status << endl;
   
   assert (status != -1 && "               Writing to filter wheel port failed...");
+}
+
+int FilterWheel::getCurrentPosition ()
+{
+  serial_send (fd_, (void*)"i2", 2);
+  usleep (1000);
+  char response[5] = "";
+  int status = serial_recv (fd_, response, 2);
+  cout << "<< Response = " << response << " >>\n";
+  if (status == -1) {
+    throw std::runtime_error ("Serial recv failed..");
+  }
+  response[2] = '\0';
+  cout << "response = " << response << "\n";
+  return ((int)response[1]-48);
 }

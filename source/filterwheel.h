@@ -99,6 +99,8 @@ class FilterWheel
     void gotoFilter (int filter);
     void gotoFilterById (int id);
 
+    int getCurrentPosition ();
+
   private:
 
 #ifndef WIN32

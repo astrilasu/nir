@@ -2,49 +2,64 @@
 #include <cstdio>
 #include <ctime>
 #include <sstream>
+#include <fstream>
+#include <iterator>
+#include <exception>
 using namespace std;
 
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <dirent.h>
+#include <unistd.h>
 
 #include "camera.h"
+#include "logger.h"
 #include "config_parser.hpp"
 #include "filterwheel.h"
 #include "filterwheel_manager.h"
 
 #include "fitsio.h"
 
+extern float over_exposed_ratio_par;
+extern Logger logger;
 
 void print_fits_error(int status)
 {
-	if(status){
+	if (status) {
 		fits_report_error(stderr, status);
 		exit(status);
 	}
 	return;
 }
 
-void get_system_time (string& time_str)
-{
-  time_t rawtime;
-  struct tm* timeinfo;
-  char buffer[80];
-
-  time (&rawtime);
-  timeinfo = localtime (&rawtime);
-
-  strftime (buffer, 80, "%Y-%m-%d--%H-%M-%S", timeinfo);
-  time_str = buffer;
-}
-
 int main (int argc, char *argv[])
 {	
-	/*cout << "Size of unsigned short = " << sizeof (unsigned short) << endl;
-	cout << "Size of unsigned int = " << sizeof (unsigned int) << endl;
-	return 0;*/
-
-	if (argc < 2) {
-		cout << "Enter the config file as the command line argument ..\n";
+	if (argc < 3) {
+    logger << "Enter arguments ..\n"
+            "\t1) Config file \n"
+            "\t2) directory to store output files\n"
+            "\t3) over exposed pixels percentage\n";
 		return -1;
 	}
+
+  over_exposed_ratio_par = atof (argv[3]) / 100.;
+
+  string dir = argv[2];
+  if (opendir (argv[2])) {
+    logger << "Directory already exists .. Please enter a new directory name ..\n";
+    return -1;
+  }
+  mkdir (argv[2], 0777);
+
+  string time_str = "";
+  get_system_time (time_str);
+  ostringstream logfilename;
+  logfilename << dir << "/log-auto-exposure-" << time_str << ".txt";
+  logger.open (logfilename.str ());
+
+  logger << "Log file is " << logfilename.str () << endl;
+
+  logger << "Over exposed percentage = " << over_exposed_ratio_par << endl;
 
 	int status = 0;
 	fitsfile* fptr = NULL;	
@@ -56,15 +71,15 @@ int main (int argc, char *argv[])
 
   try {
     parser = new ConfigParserDOM ();
-	cout << "Input file is " << inputfile << endl;
+    logger << "Input file is " << inputfile << "\n";
     parser->setInputfile (inputfile);
     if (parser->parse () == false) {
-      cout << "Error Message : " << parser->getErrorMessage () << endl;
+      logger << "Error Message : " << parser->getErrorMessage () << "\n";
       return -1;
     }
   }
   catch (MyException& e) {
-    cout << e.m_error_message << endl;
+    logger << e.m_error_message << "\n";
     return -1;
   }
  
@@ -73,7 +88,8 @@ int main (int argc, char *argv[])
 
   FilterWheel* f1 = new FilterWheel ();
 
-  cout << "Setting up filter wheel 1..\n";
+  logger << "Setting up filter wheel 1..\n";
+
   f1->setId (1);
   f1->setFilterWheelMap (parser->getFilterWheelById (0));
 #ifndef WIN32
@@ -89,7 +105,7 @@ int main (int argc, char *argv[])
   f1->openPort ();
 
 
-  cout << "Setting up filter wheel 2..\n";
+  logger << "Setting up filter wheel 2..\n";
 
   FilterWheel* f2 = new FilterWheel ();  
   f2->setId (2);
@@ -115,378 +131,203 @@ int main (int argc, char *argv[])
 
   /**** Camera setup ****/
 
-    get_camera_list ();
+  get_camera_list ();
 
-  HIDS h_cam = setup_camera ();
-  if (h_cam == -1) {
+  HIDS h_cam = 0;
+  try {
+
+    h_cam = setup_camera (&h_cam);
+    if (h_cam == -1) {
+      return -1;
+    }
+
+    if (set_display_mode (h_cam, IS_SET_DM_MONO) == -1) {
+      return -1;
+    }
+
+    UINT color_mode = IS_CM_MONO12;    
+    if (set_color_mode (h_cam, color_mode) == -1) {
+      logger << "Unable to se color mode ..\n";
+      return -1;
+    }
+
+    double fps = 0.;
+    if (get_fps (h_cam, &fps) != -1) {
+      logger << "New Frame rate = " << fps << "\n";
+    }
+
+    int width = 0; 
+    int height = 0;
+    get_AOI (h_cam, width, height);
+
+    logger << "width = " << width << " height = " << height << "\n";
+
+    int bits_pp = 12; // bits per pixel
+
+    logger << "Bits per pixel = " << bits_pp << "\n";
+
+    char* image = NULL;
+    int mem_id = 0;
+
+    if (setup_image_memory (h_cam, width, height, bits_pp, &image, &mem_id) == -1) {
+      return -1;
+    }
+
+    if (is_CaptureVideo (h_cam, IS_WAIT) != IS_SUCCESS) {
+      logger << "Failed to start live mode ..\n";
+      throw std::exception ();
+    }
+
+
+    // SETTING AUTO EXPOSURE
+    double val = 1.;
+    if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_SHUTTER, &val, NULL) != IS_SUCCESS) {
+      logger << "Unable to set auto shutter ..\n";
+      throw std::exception ();
+    }
+
+    // SETTING AUTO FRAME RATE
+    val = 1.;
+    if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_FRAMERATE, &val, NULL) != IS_SUCCESS) {
+      logger << "Unable to set auto shutter ..\n";
+      throw std::exception ();
+    }
+
+    val = 0.;
+    // DISABLING AUTO GAIN
+    if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_GAIN, &val, NULL) != IS_SUCCESS) {
+      logger << "Unable to set auto white balance ..\n";
+      throw std::exception ();
+    }
+
+
+    /**** IMAGE CAPTURE LOOP ****/
+
+    string wavelengths_str = "999 450 532 671 750 850 920 1050";
+    istringstream istr (wavelengths_str);
+    vector <int> wavelengths;
+    copy (istream_iterator <int> (istr), istream_iterator <int> (), back_inserter (wavelengths));
+
+    for (int i = 0; i < wavelengths.size (); i++) {
+      int wavelength = wavelengths[i];
+      logger << "<<Starting>> wavelength " << wavelength << endl;
+      logger << "<<wavelength>> = " << wavelength << endl;
+
+      fw_man.gotoFilter (wavelength);
+
+      // Giving some time for the filter wheel to initialize. 
+      sleep (8);
+
+      get_system_time (time_str);
+
+      // At this point, auto exposure is enabled using the camera APIs.
+      // auto exposure is disabled in the below function call, to fine tune exposure using our own algorithm
+      find_best_exposure (h_cam, image, width, height, wavelength, time_str);
+
+
+      // At this point, auto exposure remains diabled.
+      // Image is captured using the exposure obtained from our own algorithm.
+      if (capture_image (h_cam) == -1) {
+        logger << "<<wavelength>> = "  << wavelength << "\tCapture Image failed ..\n";
+        throw std::exception ();
+      }
+      else {
+        logger << "<<wavelength>> = "  << wavelength << "\tImage Captured ..\n";
+      }
+
+
+      // Enabling auto exposure again for the next filter, after obtaining exposure using our own algorithm
+      val = 1.0;
+      if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_SHUTTER, &val, NULL) != IS_SUCCESS) {
+        logger << "<<wavelength>> = " << wavelength << "\tUnable to set auto shutter ..\n";
+        throw std::exception ();
+      }
+      else {
+        logger << "<<wavelength>> = " << wavelength << "\tEnabling auto shutter to initialize auto exposure for the next filter..\n";
+      }
+
+      val = 1.;
+      if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_FRAMERATE, &val, NULL) != IS_SUCCESS) {
+        logger << "Unable to set auto frame rate ..\n";
+        throw std::exception ();
+      }
+
+      ostringstream image_name;
+      image_name << dir << "/test-auto-exposure-" << wavelength << "-" << time_str << ".png";
+      logger << "<<wavelength>> = "  << wavelength<< "\tImage name is " << image_name.str () << endl;
+      wstring image_name_w = L"";
+      string tmp = image_name.str ();
+      image_name_w.assign (tmp.begin (), tmp.end ());
+      wstring image_type = L"png";
+
+      if (save_image (h_cam, image_name_w, image_type) == -1) {
+        logger << "<<wavelength>> = "  << wavelength<< "\tCouldn't save image " << image_name.str () << endl;
+        return -1;
+      }
+
+      double exposure = 0.0;
+      get_current_exposure (h_cam, exposure);
+
+      fitsfile *fptr;
+      long fpixel = 1;		
+      long naxis = 2;
+      long naxes[2] = {width, height};
+      const int size = width * height;
+      int fitsstatus = 0;		
+
+      image_name.str ("");
+      image_name << dir << "/test-auto-exposure-" << wavelength << "-" << time_str << ".fit";
+      string fits_filename = image_name.str ();
+      logger << "<<wavelength>> = "  << wavelength<< "\tCreating file " << fits_filename << endl;
+
+      if (fits_create_file (&fptr, fits_filename.c_str (), &fitsstatus)) {
+        logger << "<<wavelength>> = "  << wavelength<< "\tUnable to create file ..\n";		
+        print_fits_error (fitsstatus);
+      }
+
+      logger << "Creating image ..\n";
+
+      if (fits_create_img (fptr, USHORT_IMG, naxis, naxes, &fitsstatus)) {
+        print_fits_error (fitsstatus);
+      }
+
+      logger << "Writing image ..\n";
+      unsigned short* pixels = new unsigned short [width*height];
+      unsigned int im_size = width*height*2;
+
+      memcpy (pixels, image, height*width*2);
+
+      if (fits_write_img (fptr, TUSHORT, fpixel, im_size, pixels, &fitsstatus)) {
+        print_fits_error(fitsstatus);
+      }
+
+      float fexposure = exposure;
+      if(fits_update_key(fptr, TFLOAT, "EXPOSURE", &fexposure, "Exposure in milli seconds", &fitsstatus)) {
+        print_fits_error(fitsstatus);
+      }
+
+      if(fits_close_file(fptr, &fitsstatus)) {
+        print_fits_error(fitsstatus);	
+      }
+
+      logger << "<<Completed>> wavelength " << wavelength << endl;
+    }
+
+    logger << "\n\nClosing the camera ..\n";
+
+    free_image_memory (h_cam, image, mem_id);
+
+    if (is_StopLiveVideo (h_cam, IS_FORCE_VIDEO_STOP) != IS_SUCCESS) {
+      logger << "Unable to stop live video ..\n";
+      throw std::exception ();
+    }
+  } // end of try
+  catch (std::exception& e) {
+    exit_camera (h_cam);		
     return -1;
   }
 
-  if (set_display_mode (h_cam, IS_SET_DM_MONO) == -1) {
-	  return -1;
-  }
-
-  UINT color_mode = IS_CM_MONO8;    
-  //UINT color_mode = IS_CM_MONO12;  
-  if (set_color_mode (h_cam, color_mode) == -1) {
-	  cout << "Unable to se color mode ..\n";
-    return -1;
-  }
-
-  //print_flash_parameters (h_cam);		
-
-  cout << endl;
-
-  //print_gain_parameters (h_cam);
-
-  //if (get_pixel_clock_info (h_cam) == -1) {
-  //  return -1;
-  //}
-
-
-  double fps = 0.5;  
-  double new_fps = 0.5;
-  if (set_fps (h_cam, fps, &new_fps) != -1) {
-    cout << "Frame rate = " << new_fps << endl;
-  }
-
-  if (get_fps (h_cam, &fps) != -1) {
-    cout << "New Frame rate = " << fps << endl;
-  }
-
-  /*if (set_gamma (h_cam, 100) == -1) {	  
-	  return -1;
-  }*/
-
-  int gamma;
-  if (get_gamma (h_cam, &gamma) == -1) {	  
-	  return -1;
-  }
-  cout << "New gamma = " << gamma << endl;
-
-  if (get_exposure_info (h_cam) == -1) {
-    return -1;
-  }
-
-
-  int width = 0; 
-  int height = 0;
-  get_AOI (h_cam, width, height);
-
-  int bits_pp = 0; // bits per pixel
-  switch (color_mode) {
-
-    case IS_CM_MONO8:
-      bits_pp = 8;
-      break;
-
-	case IS_CM_MONO12:
-      bits_pp = 12;
-      break;
-
-    case IS_CM_MONO16:
-      bits_pp = 16;
-      break;
-
-  }
-
-  cout << "Bits per pixel = " << bits_pp << endl;
-
-  char* image = NULL;
-  int mem_id = 0;
-
-  if (setup_image_memory (h_cam, width, height, bits_pp, &image, &mem_id) == -1) {
-    return -1;
-  }
-
-
-  /**** IMAGE CAPTURE logic ****/
-
-
-  //for (int i = 0; i < 2 /*2*/; i++) { // Loop through 2 filter wheels here.
-	 // map <int, int>& filters = parser->getFilterWheelById (i);
-
-	 // int k = 0;
-	 // map <int, int>::iterator itr = filters.begin ();
-	 // while (itr != filters.end ()) {
-		//  int wavelength = itr->second;
-
-		//  if (wavelength == 999) {
-		//	  itr++;
-		//	  continue;
-		//  }
-
-
-  
-		
-	  int wavelengths[7] = {450, 532, 671, 750, 850, 920, 1050};	  
-
-	for (int i = 0; i < 7; i++) {
-		  int wavelength = wavelengths[i];
-		  int k = 0;
-		  int exposure = parser->getExposureForFilter (wavelength);
-		  cout << "wavelength = " << wavelength << " exposure = " << exposure << endl;
-
-		  fw_man.gotoFilter (wavelength);
-
-		  if (k == 0) {
-#ifndef WIN32
-		  sleep (8);
-#else
-		  ::Sleep(8000);
-#endif
-		  k++;
-		  }
-		  else {
-#ifndef WIN32
-		  sleep (6);
-#else
-		  ::Sleep(6000);
-#endif
-		  }
-		  cout << "Setting exposure = " << exposure << endl;
-		  if (set_exposure (h_cam, exposure) == -1) {
-			  break;
-		  }
-
-		if (capture_image (h_cam) == -1) {
-			cout << "Capture Image failed ..\n";
-			break;
-		}
-		else {
-			cout << "Image Captured ..\n";
-		}
-
-		
-#ifndef WIN32
-#else
-		string time = "";
-		get_system_time (time);
-#endif
-		
-		ostringstream ostr;
-		ostr << "wavelength-" << wavelength << "-exposure-" << exposure << "-" << time << ".bmp";
-		wstring image_name;
-		string tmp = ostr.str ();
-		image_name.assign (tmp.begin (), tmp.end ());
-		cout << "Saving image "<< ostr.str () << endl;
-		if (save_image (h_cam, image_name.c_str (), L"jpg") == -1) {
-			cout << "Save image " << ostr.str () << " failed ..\n";
-			break;
-		}
-
-		inquire_image_memory (h_cam, image, mem_id);
-
-		ostr.str ("");
-		ostr << "wavelength-" << wavelength << "-exposure-" << exposure << "-" << time << ".fit";
-		cout << "Test print filename = " << ostr.str () << endl;
-		string fits_filename = ostr.str ();
-		fitsfile *fptr;
-		long fpixel =1;		
-		long naxis = 2;
-		long naxes[2] = {width, height};
-		const int size = width * height;
-		//unsigned short * pixel = new unsigned short[size];
-		int fitsstatus = 0;		
-
-		cout << "Creating file " << fits_filename << "..\n";
-			
-		if (fits_create_file (&fptr, fits_filename.c_str (), &fitsstatus)) {
-			cout << "Unable to create file ..\n";		
-			print_fits_error (fitsstatus);
-		}
-		
-		cout << "Creating image ..\n";
-
-		if (fits_create_img (fptr, bits_pp, naxis, naxes, &fitsstatus)) {
-			print_fits_error (fitsstatus);
-		}
-
-		cout << "Writing image ..\n";
-		//unsigned short* pixel = new unsigned short [width*height];
-		//
-		unsigned int im_size = width*height;
-		//fill_n (pixel, im_size, 0);
-
-		//for (int i=0; i<im_size; i++) {
-		//	pixel[i] = (unsigned short) image[i];
-		//	if (pixel[i] > 255) {
-		//		cout << "Pixel size overflow " << pixel[i] << " " << image[i] << " at pixel " << i << endl;
-		//		pixel[i] = 0;
-		//		//return 0;
-		//	}
-
-		//}
-		if (fits_write_img(fptr, TBYTE, fpixel, im_size, image, &fitsstatus)) {
-			print_fits_error(fitsstatus);
-		}
-		
-		long lexposure = exposure;
-		if(fits_update_key(fptr, TLONG, "EXPOSURE", &lexposure, "Exposure in microseconds", &status)) {
-			print_fits_error(status);
-		}
-
-		if(fits_close_file(fptr, &status)) {
-			print_fits_error(status);	
-		}
-
-		//delete[] pixel;
-		//return 0;
-		 //itr++;
-	  }
-  
-
-  //fw_man.gotoFilter (532);
-
-
-
-
-
-
-  cout << "\n\nClosing the camera ..\n";
-  free_image_memory (h_cam, image, mem_id);
   exit_camera (h_cam);		
 
   return 0;
 }
-
-
-
-
-//for (int i = 0; i < 2 /*2*/; i++) { // Loop through 2 filter wheels here.
-//	  map <int, int>& filters = parser->getFilterWheelById (i);
-//
-//	  int k = 0;
-//	  map <int, int>::iterator itr = filters.begin ();
-//	  while (itr != filters.end ()) {
-//		  int wavelength = itr->second;
-//
-//		  if (wavelength == 999) {
-//			  itr++;
-//			  continue;
-//		  }
-//		  int exposure = parser->getExposureForFilter (wavelength);
-//		  cout << "wavelength = " << wavelength << " exposure = " << exposure << endl;
-//
-//		  fw_man.gotoFilter (wavelength);
-//
-//		  if (k == 0) {
-//#ifndef WIN32
-//		  sleep (8);
-//#else
-//		  ::Sleep(8000);
-//#endif
-//		  k++;
-//		  }
-//		  else {
-//#ifndef WIN32
-//		  sleep (6);
-//#else
-//		  ::Sleep(6000);
-//#endif
-//		  }
-//		  cout << "Setting exposure = " << exposure << endl;
-//		  if (set_exposure (h_cam, exposure) == -1) {
-//			  break;
-//		  }
-//
-//		if (capture_image (h_cam) == -1) {
-//			cout << "Capture Image failed ..\n";
-//			break;
-//		}
-//		else {
-//			cout << "Image Captured ..\n";
-//		}
-//
-//		
-//#ifndef WIN32
-//#else
-//		string time = "";
-//		get_system_time (time);
-//#endif
-//		
-//		ostringstream ostr;
-//		ostr << "wavelength-" << wavelength << "-exposure-" << exposure << "-" << time << ".bmp";
-//		wstring image_name;
-//		string tmp = ostr.str ();
-//		image_name.assign (tmp.begin (), tmp.end ());
-//		cout << "Saving image "<< ostr.str () << endl;
-//		if (save_image (h_cam, image_name.c_str ()) == -1) {
-//			cout << "Save image " << ostr.str () << " failed ..\n";
-//			break;
-//		}
-//
-//		inquire_image_memory (h_cam, image, mem_id);
-//
-//		ostr.str ("");
-//		ostr << "wavelength-" << wavelength << "-exposure-" << exposure << "-" << time << ".fit";
-//		cout << "Test print filename = " << ostr.str () << endl;
-//		string fits_filename = ostr.str ();
-//		fitsfile *fptr;
-//		long fpixel =1;		
-//		long naxis = 2;
-//		long naxes[2] = {width, height};
-//		const int size = width * height;
-//		//unsigned short * pixel = new unsigned short[size];
-//		int fitsstatus = 0;		
-//
-//		cout << "Creating file " << fits_filename << "..\n";
-//			
-//		if (fits_create_file (&fptr, fits_filename.c_str (), &fitsstatus)) {
-//			cout << "Unable to create file ..\n";		
-//			print_fits_error (fitsstatus);
-//		}
-//		
-//		cout << "Creating image ..\n";
-//
-//		if (fits_create_img (fptr, bits_pp, naxis, naxes, &fitsstatus)) {
-//			print_fits_error (fitsstatus);
-//		}
-//
-//		cout << "Writing image ..\n";
-//		//unsigned short* pixel = new unsigned short [width*height];
-//		//
-//		unsigned int im_size = width*height;
-//		//fill_n (pixel, im_size, 0);
-//
-//		//for (int i=0; i<im_size; i++) {
-//		//	pixel[i] = (unsigned short) image[i];
-//		//	if (pixel[i] > 255) {
-//		//		cout << "Pixel size overflow " << pixel[i] << " " << image[i] << " at pixel " << i << endl;
-//		//		pixel[i] = 0;
-//		//		//return 0;
-//		//	}
-//
-//		//}
-//		if (fits_write_img(fptr, TBYTE, fpixel, im_size, image, &fitsstatus)) {
-//			print_fits_error(fitsstatus);
-//		}
-//		
-//		long lexposure = exposure;
-//		if(fits_update_key(fptr, TLONG, "EXPOSURE", &lexposure, "Exposure in microseconds", &status)) {
-//			print_fits_error(status);
-//		}
-//
-//		if(fits_close_file(fptr, &status)) {
-//			print_fits_error(status);	
-//		}
-//
-//		//delete[] pixel;
-//		//return 0;
-//		 itr++;
-//	  }
-//  }
-//
-//  //fw_man.gotoFilter (532);
-//
-//
-//
-//
-//
-//
-//  cout << "\n\nClosing the camera ..\n";
-//  free_image_memory (h_cam, image, mem_id);
-//  exit_camera (h_cam);		
-//
-//  return 0;
-//}

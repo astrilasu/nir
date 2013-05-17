@@ -1,12 +1,19 @@
 #pragma once
 
 #include <string>
+#include <fstream>
 using namespace std;
 
 #include <ueye.h>
 
+
+#define MAX_INTENSITY 3700
+#define MAX_EXPOSURE 1999
+
+void get_system_time (string& time_str);
+
 int get_camera_list ();
-int setup_camera ();
+int setup_camera (HIDS* h_cam);
 int exit_camera (HIDS h_cam);
 int get_AOI (HIDS h_cam, int& width, int& height);
 int get_sensor_info (HIDS h_cam, SENSORINFO* sensor_info);
@@ -27,6 +34,9 @@ int set_gamma (HIDS h_cam, int gamma);
 int get_gamma (HIDS h_cam, int* gamma);
 int free_image_memory (HIDS h_cam, char* image, int mem_id);
 int inquire_image_memory (HIDS h_cam, char* image, int mem_id);
+UINT get_current_exposure (HIDS h_cam, double& curr_exp);
+void find_best_exposure (HIDS h_cam, char* image, int width, int height, 
+                          int wavelength, string time_str);
 
 int set_master_gain (HIDS h_cam, int gain);
 int set_red_gain (HIDS h_cam, int gain);

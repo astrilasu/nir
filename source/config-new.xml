@@ -6,21 +6,10 @@
     <filter slot = "4" wavelength = "671" />
     <filter slot = "5" wavelength = "750" />
   </FilterWheel>
-<FilterWheel port="/dev/ttyUSB1" baudrate="9600">
+  <FilterWheel port="/dev/ttyUSB1" baudrate="9600">
     <filter slot = "1" wavelength = "999" />
-    <filter slot = "2" wavelength = "800" />
-    <filter slot = "3" wavelength = "860" />
-    <filter slot = "4" wavelength = "900" />
-    <filter slot = "5" wavelength = "930" />
+    <filter slot = "2" wavelength = "850" />
+    <filter slot = "3" wavelength = "920" />
+    <filter slot = "4" wavelength = "1050" />
   </FilterWheel>
-	<ExposureSettings>
-		<filter skip = "0" wavelength = "450" duration = "50" />
-		<filter skip = "0" wavelength = "532" duration = "100"/>
-		<filter skip = "0" wavelength = "671" duration = "1000"/>
-		<filter skip = "0" wavelength = "750" duration = "1000" />
-		<filter skip = "0" wavelength = "800" duration = "100"/>
-		<filter skip = "0" wavelength = "860" duration = "100"/>
-		<filter skip = "0" wavelength = "900" duration = "160" />
-		<filter skip = "0" wavelength = "930" duration = "320"/>
-	</ExposureSettings>
 </NIR>
