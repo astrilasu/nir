@@ -12,7 +12,6 @@ using namespace std;
 #include <cstdlib>
 #include <sys/timeb.h>
 
-float over_exposed_ratio_par = 0.;
 Logger logger;
 
 void get_system_time (string& time_str)
@@ -28,13 +27,39 @@ void get_system_time (string& time_str)
   time_str = buffer;
 }
 
-int get_camera_list ()
+CameraWrapper::CameraWrapper ()
+{
+  h_cam = 0;
+  width = height = -1;
+  mem_id = -1;
+  bits_pp = 12;
+  image = NULL;
+  over_exposed_ratio_par = 1.0;
+
+
+  setupCamera ();
+
+}
+
+
+CameraWrapper::~CameraWrapper ()
+{
+  if (is_StopLiveVideo (h_cam, IS_FORCE_VIDEO_STOP) != IS_SUCCESS) {
+    logger << "Unable to stop live video ..\n";
+    throw std::exception ();
+  }
+
+  freeImageMemory ();
+  exitCamera ();
+}
+
+void CameraWrapper::getCameraList ()
 {
   int n_cams = 0;
-  UINT n_ret = is_GetNumberOfCameras (&n_cams);
+  int n_ret = is_GetNumberOfCameras (&n_cams);
   if (n_ret == -1) {
     logger << "Failed to get the number of cameras ..\n";
-    return -1;
+    throw std::runtime_error ("Failed to get the number of cameras");
   }
 
   logger << "Number of cameras = " << n_cams << endl;
@@ -55,52 +80,91 @@ int get_camera_list ()
     }	
     delete [] pucl;
   }
-  return n_ret;
 }
 
-int setup_camera (HIDS* h_cam)
+void CameraWrapper::setupCamera ()
 {
-  INT n_ret = is_InitCamera (h_cam, NULL);
+  int n_ret = is_InitCamera (&h_cam, NULL);
 
   if (n_ret != IS_SUCCESS) {
     logger  << "InitCamera failed.. Uploading new firmware..\n";
     //Check if GigE uEye SE needs a new starter firmware
     if (n_ret == IS_STARTER_FW_UPLOAD_NEEDED) { 
       //Upload new starter firmware during initialization
-      *h_cam =  (*h_cam) | IS_ALLOW_STARTER_FW_UPLOAD;
-      n_ret = is_InitCamera (h_cam, NULL);
+      h_cam =  h_cam | IS_ALLOW_STARTER_FW_UPLOAD;
+      n_ret = is_InitCamera (&h_cam, NULL);
     }
   }
   else {
-    logger << "Camera " << *h_cam << " initialized..\n";
+    logger << "Camera " << h_cam << " initialized..\n";
   }
 
   if (n_ret == -1) {
     logger << "Failed to initialize camera again ..\n";
-    return n_ret;
+    throw std::runtime_error ("Failed to initialize camera ..\n");
+  }
+  else {
+    logger << "Camera handle = " << h_cam << endl;
   }
 
-  if (set_master_gain (*h_cam, 0) == -1) {
-    return -1;
+  setDisplayMode (IS_SET_DM_MONO);
+  setColorMode (IS_CM_MONO12);
+
+  findAOI (this->width, this->height);
+  setupImageMemory ();
+
+
+  if (is_CaptureVideo (h_cam, IS_WAIT) != IS_SUCCESS) {
+    logger << "Failed to start live mode ..\n";
+    throw std::exception ();
+  }
+  else {
+    logger << " Started live mode ..\n";
   }
 
-  return *h_cam;
+  double val = 1.0;
+  setParameter (val, IS_SET_ENABLE_AUTO_SHUTTER, "AUTO SHUTTER");
+
+  val = 1.0;
+  setParameter (val, IS_SET_ENABLE_AUTO_FRAMERATE, "AUTO FRAME RATE");
+
+  val = 0.0;
+  setParameter (val, IS_SET_ENABLE_AUTO_GAIN, "AUTO GAIN");
+
+  setMasterGain (0);
 }
 
-int exit_camera (HIDS h_cam)
+void CameraWrapper::exitCamera ()
 {
-  INT n_ret = is_ExitCamera (h_cam);
+  int n_ret = is_ExitCamera (h_cam);
   if (n_ret == IS_NO_SUCCESS) {
     logger << "ExitCamera () for Camera " << h_cam << " failed..\n";
+    throw std::runtime_error ("Exit camera failed...\n");
   }
-  return n_ret;
+  logger << "Exit camera succeeded ..\n";
 }
 
-int get_AOI (HIDS h_cam, int& width, int& height)
+void CameraWrapper::setParameter (double val, UINT option, string message)
+{
+  if (is_SetAutoParameter (h_cam, option, &val, NULL) != IS_SUCCESS) {
+    logger << "Unable to set " << message << endl;
+    throw std::exception ();
+  }
+  else {
+    logger << "Setting " << message << " to " << val << endl;
+  }
+}
+
+void CameraWrapper::findAOI (int& width, int& height)
 {
   IS_RECT rect_aoi;
 
   int n_ret = is_AOI (h_cam, IS_AOI_IMAGE_GET_AOI, (void*)&rect_aoi, sizeof (rect_aoi));
+  if (n_ret == -1) {
+    throw std::runtime_error ("Unable to get AOI ..");
+  }
+
+
   logger << "--- AOI params ---\n";
   logger << "x = " << rect_aoi.s32X << endl;
   logger << "y = " << rect_aoi.s32Y << endl;
@@ -108,16 +172,17 @@ int get_AOI (HIDS h_cam, int& width, int& height)
   logger << "height = " << (height = rect_aoi.s32Height) << endl;
   logger << "-------------------\n";
 
-  return n_ret;
+
+  this->width = width;
+  this->height = height;
 }
 
-int get_sensor_info (HIDS h_cam, SENSORINFO* sensor_info)
+void CameraWrapper::getSensorInfo (SENSORINFO* sensor_info)
 {
-  INT n_ret = is_GetSensorInfo (h_cam, sensor_info);
+  int n_ret = is_GetSensorInfo (h_cam, sensor_info);
 
-  if (n_ret == -1) {
-    logger << "GetSensorInfo FAILED ..\n";
-    return n_ret;
+  if (n_ret != IS_SUCCESS) {
+    std::runtime_error ("Unable to get sensor info ..");
   }
 
   logger << "\n--------- SENSOR INFO ----------\n";
@@ -148,12 +213,11 @@ int get_sensor_info (HIDS h_cam, SENSORINFO* sensor_info)
 
   logger << "--------------------------------\n\n";
 
-  return n_ret;
 }
 
-int setup_image_memory (HIDS h_cam, int width, int height, int bits_pp, char** image, int* mem_id)
+void CameraWrapper::setupImageMemory ()
 {
-  int n_ret = is_AllocImageMem (h_cam, width, height, bits_pp, image, mem_id);
+  int n_ret = is_AllocImageMem (h_cam, width, height, bits_pp, &image, &mem_id);
   if (n_ret == IS_SUCCESS) {
     logger << "Image Memory allocation success ..\n";
   }
@@ -178,42 +242,28 @@ int setup_image_memory (HIDS h_cam, int width, int height, int bits_pp, char** i
         logger << "Memory could not be locked. Pointer to the buffer is invalid ..\n";
         break;
     }		
-    return n_ret;
+    throw std::runtime_error ("Image Memory allocation FAILED ..");
   }
-  if (n_ret = is_SetImageMem (h_cam, *image, *mem_id) == IS_SUCCESS) {
+  if ( (n_ret = is_SetImageMem (h_cam, image, mem_id)) == IS_SUCCESS) {
     logger << "SetImageMem () SUCCESS ..\n";
   }
   else {
     logger << "SetImageMem () FAILED ..\n";
+    throw std::runtime_error ("SetImageMem () FAILED ..");
   }
-  return n_ret;
 }
 
-int print_flash_parameters (HIDS h_cam)
+void CameraWrapper::freeImageMemory ()
 {
-  IO_FLASH_PARAMS flash_par;
-  int n_ret = is_IO (h_cam, IS_IO_CMD_FLASH_GET_PARAMS, (void*)&flash_par, sizeof (flash_par));
-  if (n_ret == IS_SUCCESS) {
-    logger << "Flash delay = " << flash_par.s32Delay << endl;
-    logger << "Flash duration = " << flash_par.u32Duration << endl;
-  }
-  else {
-    logger << "Getting Flash paramenters failed ..\n";
-    return -1;
-  }
-  return n_ret;
-}
-
-int free_image_memory (HIDS h_cam, char* image, int mem_id)
-{
-  UINT n_ret = 0;
+  int n_ret = 0;
   if ( (n_ret = is_FreeImageMem (h_cam, image, mem_id)) == -1) {
     logger << "Free Image memroy failed ..\n";
+    std::runtime_error ("Free Image Memory failed ..");
   }	
-  return n_ret;
+  logger << "Free Image memory succeeded..\n";
 }
 
-int inquire_image_memory (HIDS h_cam, char* image, int mem_id)
+void CameraWrapper::inquireImageMemory (int mem_id)
 {
 	int nID = 0;
 	int nX;
@@ -231,22 +281,20 @@ int inquire_image_memory (HIDS h_cam, char* image, int mem_id)
 
 	logger << "\n------------------------------------------\n";
 
-	return status;
-
 }
-int capture_image (HIDS h_cam)
+
+void CameraWrapper::captureImage ()
 {
   //int n_ret = is_FreezeVideo (h_cam, IS_WAIT);
   int n_ret = is_FreezeVideo (h_cam, 2000);
-  //int n_ret = is_FreezeVideo (h_cam, IS_DONT_WAIT);
   if (n_ret == -1) {
     logger << "FreezeVideo () FAILED ..\n";
-    return n_ret;
+    throw std::runtime_error ("Capture image failed..");
   }
-  return n_ret;
+  logger << "Image captured ..\n";
 }
 
-int save_image (HIDS h_cam,  wstring image_name, wstring type)
+void CameraWrapper::saveImage ( wstring image_name, wstring type)
 {
   IMAGE_FILE_PARAMS file_par;
 
@@ -278,18 +326,16 @@ int save_image (HIDS h_cam,  wstring image_name, wstring type)
 
   if (n_ret == -1) {
     logger << "Save image failed ..\n";
-    return -1;
+    throw std::runtime_error ("Save image failed ..\n");
   }
-
-  logger << "Save image return value = " << n_ret << " for file " << file_par.pwchFileName << endl;
-  return n_ret;
 }
 
-int set_display_mode (HIDS h_cam, UINT mode)
+void CameraWrapper::setDisplayMode (UINT mode)
 {
   int display_mode = is_SetDisplayMode (h_cam, mode);
   display_mode = is_SetDisplayMode (h_cam, IS_GET_DISPLAY_MODE);
   logger << "Display mode = " << display_mode << endl;
+
   switch (display_mode)
   {
     case IS_SUCCESS:
@@ -297,7 +343,7 @@ int set_display_mode (HIDS h_cam, UINT mode)
       break;
     case IS_NO_SUCCESS:
       logger << "Set display mode failed..\n";
-      break;
+      throw std::runtime_error ("Set display mode failed");
     case IS_GET_DISPLAY_MODE:
       logger << "Get display mode..\n";
       break;
@@ -308,75 +354,18 @@ int set_display_mode (HIDS h_cam, UINT mode)
       logger << "DM mono mode..\n";
       break;
   }
-  return display_mode;
 }
 
-int get_exposure_info (HIDS h_cam)
-{
-  logger << "----------- EXPOSURE --------------\n";
-  double range[3];
-  int n_ret = is_Exposure (h_cam, IS_EXPOSURE_CMD_GET_FINE_INCREMENT_RANGE, 
-      (void*) range, sizeof (range));
-
-  if (n_ret == IS_SUCCESS) {
-    logger << "Expsoure range :: min = " << range[0] << " ms, max = "
-      << range[1] << " ms, increment = " << range[2] << " ms" << endl;
-  }
-  else {
-    logger << "Query exposure times failed ..\n";
-    return -1;
-  }
-
-  UINT n_caps = 0;
-  n_ret = is_Exposure (h_cam, IS_EXPOSURE_CMD_GET_CAPS, (void*)&n_caps, sizeof (n_caps));
-
-  if (n_ret == IS_SUCCESS) {
-    if (n_caps & IS_EXPOSURE_CAP_LONG_EXPOSURE) {
-      logger << "Long exposure supported ..\n";
-      n_ret = is_Exposure (h_cam, IS_EXPOSURE_CMD_GET_LONG_EXPOSURE_RANGE, 
-          (void*) range, sizeof (range));
-
-      if (n_ret == IS_SUCCESS) {
-        logger << "Long expsoure range :: min = " << range[0] << " ms, max = "
-          << range[1] << " ms, increment = " << range[2] << " ms" << endl;
-      }
-      else {
-        logger << "Query long exposure times failed ..\n";
-        return -1;
-      }
-    }
-    else {
-      logger << "Long exposure NOT supported ..\n";
-    }
-  }
-
-  double curr_exp = 0.0;
-  n_ret = is_Exposure (h_cam, IS_EXPOSURE_CMD_GET_EXPOSURE, 
-      (void*)&curr_exp, sizeof (curr_exp));
-  logger << "******** Current exposure = " << curr_exp << " ms ********" << endl;
-
-
-  logger << "---------------------------------\n";
-
-  return n_ret;
-}
-
-void find_best_exposure (HIDS h_cam, char* image, int width, int height, 
-                         int wavelength, string time_str) 
+void CameraWrapper::findBestExposure (int wavelength, string time_str) 
 {
   // Giving sometime for the sensor to adjust exposure -- required for the camera's auto exposure API
   sleep (5);
 
   double exposure = 0.0;
-  get_current_exposure (h_cam, exposure);
+  getCurrentExposure (exposure);
   logger << "<<wavelength>> = " << wavelength << "\tInitial exposure from auto exposure = " << exposure << endl;
 
-  if (capture_image (h_cam) == -1) {
-    logger << "<<wavelength>> = "  << wavelength<< "\tCapture Image failed ..\n";
-  }
-  else {
-    logger << "<<wavelength>> = "  << wavelength<< "\tImage Captured ..\n";
-  }
+  captureImage ();
 
   unsigned int size = width * height;
   unsigned short* pixels = new unsigned short [width * height];
@@ -386,7 +375,7 @@ void find_best_exposure (HIDS h_cam, char* image, int width, int height,
   int count = 0;
   unsigned int iter = 1;
 
-  get_current_exposure (h_cam, exposure);
+  getCurrentExposure (exposure);
   float right_exposure = exposure;
 
   bool over_exposure_adjust = false;
@@ -397,27 +386,19 @@ void find_best_exposure (HIDS h_cam, char* image, int width, int height,
 
   // disable auto exposure ..
   val = 0.;
-  if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_SHUTTER, &val, NULL) != IS_SUCCESS) {
-    logger << "<<wavelength>> = "  << wavelength<< "\tUnable to set auto shutter ..\n";
-    throw std::exception ();
-  }
-  else {
-    logger << "<<wavelength>> = " << wavelength
-      << "\tDisabled auto exposure after getting initial estimate from APIs\n";
-  }
+  setParameter (val, IS_SET_ENABLE_AUTO_SHUTTER, "AUTO SHUTTER");
+  logger << "<<wavelength>> = " << wavelength << "\tDisabled auto exposure after getting initial estimate from APIs\n";
 
   // disabling auto frame rate
   val = 0.;
-  if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_FRAMERATE, &val, NULL) != IS_SUCCESS) {
-    logger << "Unable to set auto shutter ..\n";
-    throw std::exception ();
-  }
+  setParameter (val, IS_SET_ENABLE_AUTO_FRAMERATE, "AUTO FRAME RATE");
+  logger << "<<wavelength>> = " << wavelength << "\tDisabled auto framerate after getting initial estimate from APIs\n";
 
   double fps = 0.5;
   double newfps = 0.0;
 
   // setting a frame rate of 0.5 to ensure that we can set maximum exposure (2 sec)
-  is_SetFrameRate (h_cam, fps, &newfps);
+  setFps (fps, newfps);
   logger << "New frame rate = " << newfps << endl;
 
 
@@ -440,12 +421,16 @@ void find_best_exposure (HIDS h_cam, char* image, int width, int height,
 
     over_exposed_ratio = count / (float) size;
 
+    if (over_exposed_ratio > 0.5) {
+      over_exposed_ratio = 0.5;
+    }
+
     if (over_exposed_ratio < over_exposed_ratio_par) {
       logger << "<<wavelength>> = "  << wavelength<< "\tOver exposure ratio = " << over_exposed_ratio << endl;
       break;
     }
 
-    get_current_exposure (h_cam, exposure);
+    getCurrentExposure (exposure);
 
     // disabling camera's auto exposure at this point to fine tune using our own logic
     logger << "<<wavelength>> = "  << wavelength<< "\tCurrent exposure = " << exposure << endl;
@@ -463,19 +448,14 @@ void find_best_exposure (HIDS h_cam, char* image, int width, int height,
     logger << "<<wavelength>> = "  << wavelength<< "\tOver exposure logic <<<<<<< Setting exposure to " 
       << exposure << " at iteration " << iter << " >>>>>>>\n\n\n";
 
-    set_exposure (h_cam, exposure);
+    setExposure (exposure);
     over_exposure_adjust = true;
 
     // giving some time for the new exposure to take effect. Is this needed? CHECK..
     sleep (3);
 
-    if (capture_image (h_cam) == -1) {
-      logger << "<<wavelength>> = "  << wavelength<< "\tCapture Image failed ..\n";
-      throw std::exception ();
-    }
-    else {
-      logger << "<<wavelength>> = "  << wavelength<< "\tImage Captured ..\n";
-    }
+    captureImage ();
+    logger << "<<wavelength>> = "  << wavelength<< "\tImage Captured ..\n";
 
     memcpy (pixels, image, height*width*2);
     iter++;
@@ -509,7 +489,7 @@ void find_best_exposure (HIDS h_cam, char* image, int width, int height,
     if (over_exposed_ratio < over_exposed_ratio_par) {
 
       exposure = 0.;
-      get_current_exposure (h_cam, exposure);
+      getCurrentExposure (exposure);
 
       logger << "<<wavelength>> = "  << wavelength<< "\tOver exposure ratio = " << over_exposed_ratio << endl;
 
@@ -523,13 +503,13 @@ void find_best_exposure (HIDS h_cam, char* image, int width, int height,
       logger << "<<wavelength>> = "  << wavelength<< "\tUnder exposure logic <<<<<<< Setting exposure to " 
         << right_exposure << " at iteration " << iter << " >>>>>>>\n\n\n";
 
-      set_exposure (h_cam, right_exposure);
+      setExposure (right_exposure);
 
       // giving some time for the new exposure to take effect. Is this needed? CHECK..
       sleep (3);
 
       exposure = 0.0;
-      get_current_exposure (h_cam, exposure);
+      getCurrentExposure (exposure);
       logger << "Exposure after updating = " << exposure << endl;
 
       if (right_exposure > MAX_EXPOSURE) {
@@ -538,13 +518,8 @@ void find_best_exposure (HIDS h_cam, char* image, int width, int height,
         break;
       }
 
-      if (capture_image (h_cam) == -1) {
-        logger << "<<wavelength>> = "  << wavelength<< "\tCapture Image failed ..\n";
-        throw std::exception ();
-      }
-      else {
-        logger << "<<wavelength>> = "  << wavelength<< "\tImage Captured ..\n";
-      }
+      captureImage ();
+      logger << "<<wavelength>> = "  << wavelength<< "\tImage Captured ..\n";
 
       memcpy (pixels, image, height*width*2);
 
@@ -558,7 +533,8 @@ void find_best_exposure (HIDS h_cam, char* image, int width, int height,
   }
 
 
-  // REDUCE OVER EXPOSURE AGAIN TO ENSURE THAT THE UNDER EXPOSRE LOGIC DOESN'T OVER SHOOT THE USER SPECIFIED PERCENTAGE
+  // REDUCE OVER EXPOSURE AGAIN TO ENSURE THAT THE UNDER EXPOSRE LOGIC 
+  // DOESN'T OVER SHOOT THE USER SPECIFIED PERCENTAGE
 
   while (true) {
 
@@ -583,7 +559,7 @@ void find_best_exposure (HIDS h_cam, char* image, int width, int height,
       break;
     }
 
-    get_current_exposure (h_cam, exposure);
+    getCurrentExposure (exposure);
 
     logger << "<<wavelength>> = "  << wavelength<< "\tCurrent exposure = " << exposure << endl;
     logger << "<<wavelength>> = "  << wavelength<< "\tOver exposure ratio = " << over_exposed_ratio << endl;
@@ -599,18 +575,13 @@ void find_best_exposure (HIDS h_cam, char* image, int width, int height,
     logger << "<<wavelength>> = "  << wavelength<< "\tOver exposure logic <<<<<<< Setting exposure to " 
       << exposure << " at iteration " << iter << " >>>>>>>\n\n\n";
 
-    set_exposure (h_cam, exposure);
+    setExposure (exposure);
 
     // giving some time for the new exposure to take effect. Is this needed? CHECK..
     sleep (3);
 
-    if (capture_image (h_cam) == -1) {
-      logger << "<<wavelength>> = "  << wavelength<< "\tCapture Image failed ..\n";
-      throw std::exception ();
-    }
-    else {
-      logger << "<<wavelength>> = "  << wavelength<< "\tImage Captured ..\n";
-    }
+    captureImage ();
+    logger << "<<wavelength>> = "  << wavelength<< "\tImage Captured ..\n";
 
     memcpy (pixels, image, height*width*2);
     iter++;
@@ -620,113 +591,118 @@ void find_best_exposure (HIDS h_cam, char* image, int width, int height,
     <<" .. expsoure = " << right_exposure << ", maxpixval count = " << count << ", over exposure ratio = " << over_exposed_ratio <<  " ... Breaking ..****\n";
 }
 
-UINT get_current_exposure (HIDS h_cam, double& curr_exp)
+void CameraWrapper::getCurrentExposure (double& curr_exp)
 {
-  UINT n_ret = is_Exposure (h_cam, IS_EXPOSURE_CMD_GET_EXPOSURE, 
+  int n_ret = is_Exposure (h_cam, IS_EXPOSURE_CMD_GET_EXPOSURE, 
       (void*)&curr_exp, sizeof (curr_exp));
-  return n_ret;
+  if (n_ret != IS_SUCCESS) {
+    throw std::runtime_error ("Get current exposure failed");
+  }
 }
 
-int set_exposure (UINT h_cam, double e)
+void CameraWrapper::setExposure (double e)
 {
   //double new_exp = e * 0.001;
   double new_exp = e;
   logger << "Setting exposure to " << new_exp << " ms\n";
-  UINT n_ret = is_Exposure (h_cam, IS_EXPOSURE_CMD_SET_EXPOSURE, 
+  int n_ret = is_Exposure (h_cam, IS_EXPOSURE_CMD_SET_EXPOSURE, 
       (void*)&new_exp, sizeof (new_exp));
+
+  if (n_ret != IS_SUCCESS) {
+    throw std::runtime_error ("Unable to set exposure");
+  }
 
   double curr_exp = 0.0;
   n_ret = is_Exposure (h_cam, IS_EXPOSURE_CMD_GET_EXPOSURE, 
       (void*)&curr_exp, sizeof (curr_exp));
+  if (n_ret != IS_SUCCESS) {
+    throw std::runtime_error ("Unable to get exposure");
+  }
   logger << "Current exposure = " << curr_exp << " ms " << endl;
-  return n_ret;
 }
 
-int get_pixel_clock_info (HIDS h_cam)
+void CameraWrapper::getPixelClockInfo ()
 {
   logger << "--------- PIXEL CLOCK -------------\n";
-  INT n_ret = 0;
-  UINT pc_freq = 0;
+  int n_ret = 0;
+  int pc_freq = 0;
   n_ret = is_PixelClock (h_cam, IS_PIXELCLOCK_CMD_GET, (void*)&pc_freq, sizeof (pc_freq));
 
-  logger << "Pixel clock frequency = " << pc_freq << endl;
+  if (n_ret != IS_SUCCESS) {
+    throw std::runtime_error ("Unable to get pixel clock info");
+  }
 
+  logger << "Pixel clock frequency = " << pc_freq << endl;
   logger << "------------------------------------\n\n";
-  return n_ret;
+
 }
 
-int set_master_gain (HIDS h_cam, int gain)
+void CameraWrapper::setMasterGain (int gain)
 {
   logger << "Setting Master gain to " << gain << endl;
-  UINT n_ret = is_SetHardwareGain (h_cam, gain, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER);
+  int n_ret = is_SetHardwareGain (h_cam, gain, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER);
   if (n_ret == -1) {
     logger << "Setting Master gain failed ..\n";
-    return n_ret;
+    throw std::runtime_error ("Unable to set master gain");
   }
 
   logger << "Master gain = " << is_SetHardwareGain (h_cam, IS_GET_MASTER_GAIN, IS_IGNORE_PARAMETER, 
       IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER) << endl;
-  return n_ret;
 }
 
-int set_red_gain (HIDS h_cam, int gain)
+void CameraWrapper::setRedGain (int gain)
 {
   logger << "Setting red gain to " << gain << endl;
-  UINT n_ret = is_SetHardwareGain (h_cam, IS_IGNORE_PARAMETER, gain, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER);
+  int n_ret = is_SetHardwareGain (h_cam, IS_IGNORE_PARAMETER, gain, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER);
   if (n_ret == -1) {
     logger << "Setting Red gain failed ..\n";
-    return n_ret;
+    throw std::runtime_error ("Unable to set red gain");
   }
 
   logger << "Red gain = " << is_SetHardwareGain (h_cam, IS_IGNORE_PARAMETER, IS_GET_RED_GAIN, 
       IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER) << endl;
-  return n_ret;
 }
 
-int set_green_gain (HIDS h_cam, int gain)
+void CameraWrapper::setGreenGain (int gain)
 {
   logger << "Setting green gain to " << gain << endl;
-  UINT n_ret = is_SetHardwareGain (h_cam, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER, gain, IS_IGNORE_PARAMETER);
+  int n_ret = is_SetHardwareGain (h_cam, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER, gain, IS_IGNORE_PARAMETER);
   if (n_ret == -1) {
     logger << "Setting Green gain failed ..\n";
-    return n_ret;
+    throw std::runtime_error ("Unable to set green gain");
   }
 
   logger << "Green gain = " << is_SetHardwareGain (h_cam, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER, 
       IS_GET_GREEN_GAIN, IS_IGNORE_PARAMETER) << endl;
-
-  return n_ret;
 }
 
-int set_blue_gain (HIDS h_cam, int gain)
+void CameraWrapper::setBlueGain (int gain)
 {
   logger << "Setting blue gain to " << gain << endl;
-  UINT n_ret = is_SetHardwareGain (h_cam, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER, gain);
+  int n_ret = is_SetHardwareGain (h_cam, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER, gain);
   if (n_ret == -1) {
     logger << "Setting Blue gain failed ..\n";
-    return n_ret;
+    throw std::runtime_error ("Unable to set blue gain");
   }
 
   logger << "Blue gain = " << is_SetHardwareGain (h_cam, IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER, 
       IS_IGNORE_PARAMETER, IS_GET_BLUE_GAIN) << endl;
-  return n_ret;
 }
 
-int set_color_mode (HIDS h_cam, UINT color_mode)
+void CameraWrapper::setColorMode (UINT color_mode)
 {
-  UINT n_ret = is_SetColorMode (h_cam, color_mode);
+  int n_ret = is_SetColorMode (h_cam, color_mode);
 
   if (n_ret == IS_SUCCESS) {
     logger << "SetColorMode () successful ..\n";
   }
   else {
-    color_mode_error_msg (n_ret);
     logger << "SetColorMode () FAILED ..\n";
+    throw std::runtime_error ("Unable to set color mode");
   }
-  return n_ret;
 }
 
-int set_gamma (HIDS h_cam, int gamma)
+void CameraWrapper::setGamma (int gamma)
 {
 	int n_ret = 0;
 
@@ -734,11 +710,11 @@ int set_gamma (HIDS h_cam, int gamma)
 
 	if (n_ret != IS_SUCCESS) {
 		logger << "Unable to set gamma to " << gamma << " ..\n";
-		return -1;
+    throw std::runtime_error ("Unable to set gamma");
 	}	
 }
 
-int get_gamma (HIDS h_cam, int* gamma)
+void CameraWrapper::getGamma (int& gamma)
 {
 	int n_ret = 0;
 
@@ -746,90 +722,29 @@ int get_gamma (HIDS h_cam, int* gamma)
 
 	if (n_ret == IS_NO_SUCCESS) {
 		logger << "Unable to get gamma ..\n";
-		return -1;
+    throw std::runtime_error ("Unable to get gamma");
 	}
-	*gamma = n_ret;
-
+	gamma = n_ret;
 }
 
-int get_fps (HIDS h_cam, double* fps)
+void CameraWrapper::getFps (double& fps)
 {
-  return is_GetFramesPerSecond (h_cam, fps);
-}
-
-int set_fps (HIDS h_cam, double fps, double* new_fps)
-{
-	return is_SetFrameRate (h_cam, fps, new_fps);
-}
-
-void print_gain_parameters (HIDS h_cam)
-{
-  logger << "------------ GAIN ------------\n";
-  logger << "Master gain = " << is_SetHardwareGain (h_cam, IS_GET_MASTER_GAIN, IS_IGNORE_PARAMETER, 
-      IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER) << endl;
-
-  logger << "Red gain = " << is_SetHardwareGain (h_cam, IS_IGNORE_PARAMETER, IS_GET_RED_GAIN, 
-      IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER) << endl;
-
-  logger << "Green gain = " << is_SetHardwareGain (h_cam,  IS_IGNORE_PARAMETER, 
-      IS_IGNORE_PARAMETER, IS_GET_GREEN_GAIN, IS_IGNORE_PARAMETER) << endl;
-
-  logger << "Blue gain = " << is_SetHardwareGain (h_cam,  IS_IGNORE_PARAMETER, 
-      IS_IGNORE_PARAMETER, IS_IGNORE_PARAMETER, IS_GET_BLUE_GAIN) << endl;
-  logger << "-----------------------------\n\n";
-}
-
-void color_mode_error_msg (UINT n_ret)
-{
-  switch (n_ret)
-  {
-    case IS_CANT_COMMUNICATE_WITH_DRIVER:
-      logger << "Cannot communicate with driver ..\n";
-      break;
-    case IS_CANT_OPEN_DEVICE:
-      logger << "Can't open device ..\n";
-      break;
-    case IS_CAPTURE_RUNNING:
-      logger << "A capture operation is still in progress ..\n";
-      break;
-    case IS_INVALID_CAMERA_TYPE:
-      logger << "Invalid camera type ..\n";
-      break;
-    case IS_INVALID_COLOR_FORMAT:
-      logger << "Invalid color format ..\n";
-      break;
-    case IS_INVALID_CAMERA_HANDLE:
-      logger << "Invalid camera handle ..\n";
-      break;
-    case IS_INVALID_MODE:
-      logger << "Invalid mode ..\n";
-      break;
-    case IS_INVALID_PARAMETER:
-      logger << "Invalid parameter ..\n";
-      break;
-    case IS_IO_REQUEST_FAILED:
-      logger << "IO request failed ..\n";
-      break;
-    case IS_NO_IR_FILTER:
-      logger << "No IR filter available ..\n";
-      break;
-    case IS_NO_SUCCESS:
-      logger << "No success ..  error code = " << n_ret << endl;
-      break;
-    case IS_NOT_CALIBRATED:
-      logger << "Not calibrated ..\n";
-      break;
-    case IS_NOT_SUPPORTED:
-      logger << "This color mode is not supported in this camera model ..\n";
-      break;
-    case IS_NULL_POINTER:
-      logger << "Invalid array ..\n";
-      break;
-    case IS_OUT_OF_MEMORY:
-      logger << "Memory can't be allocated ..\n";
-      break;
-    case IS_TIMED_OUT:
-      logger << "Timeout ..\n";
-      break;
+  double nfps = 0;
+  int n_ret = is_GetFramesPerSecond (h_cam, &nfps);
+  if (n_ret != IS_SUCCESS) {
+    logger << "Unable to get fps\n";
+    throw std::runtime_error ("Unable to get fps");
   }
+  fps = nfps;
+}
+
+void CameraWrapper::setFps (double fps, double& new_fps)
+{
+  double nfps = 0.0;
+	int n_ret = is_SetFrameRate (h_cam, fps, &nfps);
+  if (n_ret != IS_SUCCESS) {
+    logger << "Unable to set fps\n";
+    throw std::runtime_error ("Unable to set fps");
+  }
+  new_fps = nfps;
 }

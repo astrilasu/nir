@@ -20,10 +20,10 @@ using namespace std;
 
 #include "fitsio.h"
 
-extern float over_exposed_ratio_par;
 extern Logger logger;
 
-void print_fits_error(int status)
+
+void print_fits_error (int status)
 {
 	if (status) {
 		fits_report_error(stderr, status);
@@ -32,21 +32,23 @@ void print_fits_error(int status)
 	return;
 }
 
-int main (int argc, char *argv[])
-{	
-	if (argc < 3) {
-    logger << "Enter arguments ..\n"
-            "\t1) Config file \n"
-            "\t2) directory to store output files\n"
-            "\t3) over exposed pixels percentage\n";
-		return -1;
-	}
 
-  over_exposed_ratio_par = atof (argv[3]) / 100.;
+
+int main (int argc, char *argv[])
+{
+  if (argc < 3) {
+    cout << "Enter arguments ..\n"
+      "\t1) Config file \n"
+      "\t2) directory to store output files\n"
+      "\t3) over exposed pixels percentage\n";
+    return -1;
+  }
+
+  float over_exposed_ratio_par = atof (argv[3]) / 100.;
 
   string dir = argv[2];
   if (opendir (argv[2])) {
-    logger << "Directory already exists .. Please enter a new directory name ..\n";
+    cout << "Directory already exists .. Please enter a new directory name ..\n";
     return -1;
   }
   mkdir (argv[2], 0777);
@@ -61,15 +63,17 @@ int main (int argc, char *argv[])
 
   logger << "Over exposed percentage = " << over_exposed_ratio_par << endl;
 
-	int status = 0;
-	fitsfile* fptr = NULL;	
+  CameraWrapper* camera = NULL;
+  try
+  {
+    int status = 0;
+    fitsfile* fptr = NULL;	
 
-	/**** XML PARSER setup ****/
+    /**** XML PARSER setup ****/
 
-  ConfigParser* parser = NULL;
-  string inputfile = argv[1];
+    ConfigParser* parser = NULL;
+    string inputfile = argv[1];
 
-  try {
     parser = new ConfigParserDOM ();
     logger << "Input file is " << inputfile << "\n";
     parser->setInputfile (inputfile);
@@ -77,128 +81,62 @@ int main (int argc, char *argv[])
       logger << "Error Message : " << parser->getErrorMessage () << "\n";
       return -1;
     }
-  }
-  catch (MyException& e) {
-    logger << e.m_error_message << "\n";
-    return -1;
-  }
- 
 
-  /**** FilterWheel setup ****/
 
-  FilterWheel* f1 = new FilterWheel ();
+    /**** FilterWheel setup ****/
 
-  logger << "Setting up filter wheel 1..\n";
+    FilterWheel* f1 = new FilterWheel ();
 
-  f1->setId (1);
-  f1->setFilterWheelMap (parser->getFilterWheelById (0));
+    logger << "Setting up filter wheel 1..\n";
+
+    f1->setId (1);
+    f1->setFilterWheelMap (parser->getFilterWheelById (0));
 #ifndef WIN32
-  f1->setPort (parser->get_fw_port (0));
+    f1->setPort (parser->get_fw_port (0));
 #else
-  string str = parser->get_fw_port (0);
-  wstring wstr;
-  wstr.assign (str.begin (), str.end ());
-  f1->setPort ((wchar_t*) wstr.c_str ());
+    string str = parser->get_fw_port (0);
+    wstring wstr;
+    wstr.assign (str.begin (), str.end ());
+    f1->setPort ((wchar_t*) wstr.c_str ());
 #endif
 
-  f1->setBaudRate (parser->get_fw_baud (0));
-  f1->openPort ();
+    f1->setBaudRate (parser->get_fw_baud (0));
+    f1->openPort ();
 
 
-  logger << "Setting up filter wheel 2..\n";
+    logger << "Setting up filter wheel 2..\n";
 
-  FilterWheel* f2 = new FilterWheel ();  
-  f2->setId (2);
-  f2->setFilterWheelMap (parser->getFilterWheelById (1));
+    FilterWheel* f2 = new FilterWheel ();  
+    f2->setId (2);
+    f2->setFilterWheelMap (parser->getFilterWheelById (1));
 #ifndef WIN32
-  f2->setPort (parser->get_fw_port (1));
+    f2->setPort (parser->get_fw_port (1));
 #else
-  str = parser->get_fw_port (1);  
-  wstr.assign (str.begin (), str.end ());
-  f2->setPort ((wchar_t*) wstr.c_str ());
+    str = parser->get_fw_port (1);  
+    wstr.assign (str.begin (), str.end ());
+    f2->setPort ((wchar_t*) wstr.c_str ());
 #endif
-//
-  f2->setBaudRate (parser->get_fw_baud (0));
-  f2->openPort ();
-//  return 0;  
+    //
+    f2->setBaudRate (parser->get_fw_baud (0));
+    f2->openPort ();
+    //  return 0;  
 
-  FilterWheel* fw[2];
-  fw[0] = f1;
-  fw[1] = f2;  
+    FilterWheel* fw[2];
+    fw[0] = f1;
+    fw[1] = f2;  
 
-  FilterWheelManager fw_man (fw);
-
-
-  /**** Camera setup ****/
-
-  get_camera_list ();
-
-  HIDS h_cam = 0;
-  try {
-
-    h_cam = setup_camera (&h_cam);
-    if (h_cam == -1) {
-      return -1;
-    }
-
-    if (set_display_mode (h_cam, IS_SET_DM_MONO) == -1) {
-      return -1;
-    }
-
-    UINT color_mode = IS_CM_MONO12;    
-    if (set_color_mode (h_cam, color_mode) == -1) {
-      logger << "Unable to se color mode ..\n";
-      return -1;
-    }
-
-    double fps = 0.;
-    if (get_fps (h_cam, &fps) != -1) {
-      logger << "New Frame rate = " << fps << "\n";
-    }
-
-    int width = 0; 
-    int height = 0;
-    get_AOI (h_cam, width, height);
-
-    logger << "width = " << width << " height = " << height << "\n";
-
-    int bits_pp = 12; // bits per pixel
-
-    logger << "Bits per pixel = " << bits_pp << "\n";
-
-    char* image = NULL;
-    int mem_id = 0;
-
-    if (setup_image_memory (h_cam, width, height, bits_pp, &image, &mem_id) == -1) {
-      return -1;
-    }
-
-    if (is_CaptureVideo (h_cam, IS_WAIT) != IS_SUCCESS) {
-      logger << "Failed to start live mode ..\n";
-      throw std::exception ();
-    }
+    FilterWheelManager fw_man (fw);
 
 
-    // SETTING AUTO EXPOSURE
-    double val = 1.;
-    if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_SHUTTER, &val, NULL) != IS_SUCCESS) {
-      logger << "Unable to set auto shutter ..\n";
-      throw std::exception ();
-    }
+    camera = new CameraWrapper ();
+    camera->setOverExposedRatio (over_exposed_ratio_par);
+    //sleep (3);
+    //camera->captureImage ();
+    //wstring name = L"test_oo.png";
+    //wstring type = L"png";
+    //camera->saveImage (name, type);
 
-    // SETTING AUTO FRAME RATE
-    val = 1.;
-    if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_FRAMERATE, &val, NULL) != IS_SUCCESS) {
-      logger << "Unable to set auto shutter ..\n";
-      throw std::exception ();
-    }
 
-    val = 0.;
-    // DISABLING AUTO GAIN
-    if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_GAIN, &val, NULL) != IS_SUCCESS) {
-      logger << "Unable to set auto white balance ..\n";
-      throw std::exception ();
-    }
 
 
     /**** IMAGE CAPTURE LOOP ****/
@@ -222,35 +160,20 @@ int main (int argc, char *argv[])
 
       // At this point, auto exposure is enabled using the camera APIs.
       // auto exposure is disabled in the below function call, to fine tune exposure using our own algorithm
-      find_best_exposure (h_cam, image, width, height, wavelength, time_str);
+      camera->findBestExposure (wavelength, time_str);
 
 
-      // At this point, auto exposure remains diabled.
+      // At this point, auto exposure remains disabled.
       // Image is captured using the exposure obtained from our own algorithm.
-      if (capture_image (h_cam) == -1) {
-        logger << "<<wavelength>> = "  << wavelength << "\tCapture Image failed ..\n";
-        throw std::exception ();
-      }
-      else {
-        logger << "<<wavelength>> = "  << wavelength << "\tImage Captured ..\n";
-      }
+      camera->captureImage ();
 
 
       // Enabling auto exposure again for the next filter, after obtaining exposure using our own algorithm
-      val = 1.0;
-      if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_SHUTTER, &val, NULL) != IS_SUCCESS) {
-        logger << "<<wavelength>> = " << wavelength << "\tUnable to set auto shutter ..\n";
-        throw std::exception ();
-      }
-      else {
-        logger << "<<wavelength>> = " << wavelength << "\tEnabling auto shutter to initialize auto exposure for the next filter..\n";
-      }
+      double val = 1.0;
+      camera->setParameter (val, IS_SET_ENABLE_AUTO_SHUTTER, "AUTO SHUTTER");
 
       val = 1.;
-      if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_FRAMERATE, &val, NULL) != IS_SUCCESS) {
-        logger << "Unable to set auto frame rate ..\n";
-        throw std::exception ();
-      }
+      camera->setParameter (val, IS_SET_ENABLE_AUTO_FRAMERATE, "AUTO FRAME RATE");
 
       ostringstream image_name;
       image_name << dir << "/test-auto-exposure-" << wavelength << "-" << time_str << ".png";
@@ -260,13 +183,13 @@ int main (int argc, char *argv[])
       image_name_w.assign (tmp.begin (), tmp.end ());
       wstring image_type = L"png";
 
-      if (save_image (h_cam, image_name_w, image_type) == -1) {
-        logger << "<<wavelength>> = "  << wavelength<< "\tCouldn't save image " << image_name.str () << endl;
-        return -1;
-      }
+      camera->saveImage (image_name_w, image_type);
 
       double exposure = 0.0;
-      get_current_exposure (h_cam, exposure);
+      camera->getCurrentExposure (exposure);
+
+      int width = camera->getWidth ();
+      int height = camera->getHeight ();
 
       fitsfile *fptr;
       long fpixel = 1;		
@@ -294,6 +217,7 @@ int main (int argc, char *argv[])
       logger << "Writing image ..\n";
       unsigned short* pixels = new unsigned short [width*height];
       unsigned int im_size = width*height*2;
+      char* image = camera->getImageMemory ();
 
       memcpy (pixels, image, height*width*2);
 
@@ -313,21 +237,19 @@ int main (int argc, char *argv[])
       logger << "<<Completed>> wavelength " << wavelength << endl;
     }
 
-    logger << "\n\nClosing the camera ..\n";
 
-    free_image_memory (h_cam, image, mem_id);
-
-    if (is_StopLiveVideo (h_cam, IS_FORCE_VIDEO_STOP) != IS_SUCCESS) {
-      logger << "Unable to stop live video ..\n";
-      throw std::exception ();
-    }
-  } // end of try
+  }
   catch (std::exception& e) {
-    exit_camera (h_cam);		
+    cout << "Exception : " << e.what () << endl;
+    if (camera) {
+      delete camera;
+    }
     return -1;
   }
 
-  exit_camera (h_cam);		
+  if (camera) {
+    delete camera;
+  }
 
   return 0;
 }

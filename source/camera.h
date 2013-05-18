@@ -12,33 +12,75 @@ using namespace std;
 
 void get_system_time (string& time_str);
 
-int get_camera_list ();
-int setup_camera (HIDS* h_cam);
-int exit_camera (HIDS h_cam);
-int get_AOI (HIDS h_cam, int& width, int& height);
-int get_sensor_info (HIDS h_cam, SENSORINFO* sensor_info);
-int setup_image_memory (HIDS h_cam, int width, int height, int bits_pp, char** image, int* mem_id);
-int print_flash_parameters (HIDS h_cam);
-int capture_image (HIDS h_cam);
-int save_image (HIDS h_cam, wstring image_name, wstring type);
-int set_display_mode (HIDS h_cam, UINT mode);
-int get_exposure_info (HIDS h_cam);
-int set_exposure (UINT h_cam, double e); // in milli seconds
-int get_pixel_clock_info (HIDS h_cam);
-void print_gain_parameters (HIDS h_cam);
-void color_mode_error_msg (UINT n_ret);
-int set_color_mode (HIDS h_cam, UINT color_mode);
-int set_fps (HIDS h_cam, double fps, double* new_fps);
-int get_fps (HIDS h_cam, double* fps);
-int set_gamma (HIDS h_cam, int gamma);
-int get_gamma (HIDS h_cam, int* gamma);
-int free_image_memory (HIDS h_cam, char* image, int mem_id);
-int inquire_image_memory (HIDS h_cam, char* image, int mem_id);
-UINT get_current_exposure (HIDS h_cam, double& curr_exp);
-void find_best_exposure (HIDS h_cam, char* image, int width, int height, 
-                          int wavelength, string time_str);
+class CameraWrapper
+{
 
-int set_master_gain (HIDS h_cam, int gain);
-int set_red_gain (HIDS h_cam, int gain);
-int set_green_gain (HIDS h_cam, int gain);
-int set_blue_gain (HIDS h_cam, int gain);
+  public:
+
+    static void getCameraList ();
+
+    CameraWrapper ();
+    ~CameraWrapper ();
+
+    void setupCamera ();
+    void exitCamera ();
+
+    void findAOI (int& width, int& height);
+    int getHeight () { return height; }
+    int getWidth () { return width; }
+
+    void getSensorInfo (SENSORINFO* sensor_info);
+
+    void setupImageMemory ();
+    char* getImageMemory () { return image; }
+
+    void captureImage ();
+    void saveImage (wstring image_name, wstring type);
+    void freeImageMemory ();
+
+    void setDisplayMode (UINT mode);
+
+    void setExposure (double e); // in milli seconds
+    void getCurrentExposure (double& curr_exp);
+
+    void getPixelClockInfo ();
+
+    void setColorMode (UINT color_mode);
+
+    void setFps (double fps, double& new_fps);
+    void getFps (double& fps);
+
+    void setGamma (int gamma);
+    void getGamma (int& gamma);
+
+
+    void setBitsPerPixel (int bits_pp) { this->bits_pp = bits_pp; }
+    void setOverExposedRatio (float over_exposed_ratio) { over_exposed_ratio_par = over_exposed_ratio; }
+
+    void setMasterGain (int gain);
+    void setRedGain (int gain);
+    void setGreenGain (int gain);
+    void setBlueGain (int gain);
+
+
+    void setParameter (double val, UINT option, string message);
+
+    void findBestExposure (int wavelength, string time_str);
+
+    void inquireImageMemory (int mem_id);
+
+    
+
+  protected:
+
+    HIDS h_cam;
+    int width;
+    int height;
+
+    char* image;
+    int mem_id;
+    int bits_pp;
+
+    float over_exposed_ratio_par;
+
+};
