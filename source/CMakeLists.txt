@@ -22,7 +22,6 @@ add_executable (flat_field flat_field.cpp camera.cpp logger.cpp)
 add_executable (test_fits test_fits.cpp)
 add_executable (auto_exposure auto_exposure.cpp camera.cpp logger.cpp camera.h logger.h)
 add_executable (nir_main serial.cpp filterwheel.cpp camera.cpp main.cpp filter_wheel_manager.cpp logger.cpp)
-#add_executable (test_oo serial.cpp filterwheel.cpp camera.cpp test_oo.cpp filter_wheel_manager.cpp logger.cpp)
 
 
 target_link_libraries (test_filterwheel xerces-c)
@@ -31,4 +30,3 @@ target_link_libraries (test_camera ueye_api cfitsio)
 target_link_libraries (flat_field ueye_api cfitsio)
 target_link_libraries (auto_exposure ueye_api cfitsio)
 target_link_libraries (nir_main ueye_api cfitsio xerces-c)
-#target_link_libraries (test_oo ueye_api cfitsio xerces-c)
