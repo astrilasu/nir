@@ -13,7 +13,7 @@ using namespace std;
 #include "logger.h"
 #include "fitsio.h"
 
-extern Logger logger;
+Logger logger;
 
 void print_fits_error(int status)
 {

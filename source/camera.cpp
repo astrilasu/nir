@@ -12,7 +12,7 @@ using namespace std;
 #include <cstdlib>
 #include <sys/timeb.h>
 
-Logger logger;
+extern Logger logger;
 
 void get_system_time (string& time_str)
 {
