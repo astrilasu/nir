@@ -20,7 +20,7 @@ using namespace std;
 
 #include "fitsio.h"
 
-extern Logger logger;
+Logger logger;
 
 
 void print_fits_error (int status)
@@ -62,6 +62,7 @@ int main (int argc, char *argv[])
   logger << "Log file is " << logfilename.str () << endl;
 
   logger << "Over exposed percentage = " << over_exposed_ratio_par << endl;
+
 
   CameraWrapper* camera = NULL;
   try
@@ -135,7 +136,6 @@ int main (int argc, char *argv[])
     //wstring name = L"test_oo.png";
     //wstring type = L"png";
     //camera->saveImage (name, type);
-
 
 
 
@@ -236,8 +236,6 @@ int main (int argc, char *argv[])
 
       logger << "<<Completed>> wavelength " << wavelength << endl;
     }
-
-
   }
   catch (std::exception& e) {
     cout << "Exception : " << e.what () << endl;

@@ -62,14 +62,35 @@ void FilterWheel::gotoFilterById (int id)
 
 int FilterWheel::getCurrentPosition ()
 {
-  serial_send (fd_, (void*)"i2", 2);
-  usleep (1000);
   char response[5] = "";
-  int status = serial_recv (fd_, response, 2);
-  cout << "<< Response = " << response << " >>\n";
-  if (status == -1) {
-    throw std::runtime_error ("Serial recv failed..");
+  int k = 0;
+  for (k = 0; k < 15; k++) {
+    char* command = "i2";
+    int status = serial_send (fd_, command, 2);
+    cout << "Write status = " << status << endl;
+
+    usleep (1000 * 50); // sleep for 50 milliseconds
+
+    strcpy (response, "");
+    status = serial_recv (fd_, response, 2);
+    response[2] = '\0';
+    cout << "response = *" << response << "*\n";
+
+    if (response[0] != 'P' && 
+        (response[1] != '1' || response[1] != '2' || response[1] != '3'
+         || response[1] != '4' || response[1] != '5')) {
+      cout << "k = " << k << " No response.. Trying again ..\n";
+    }
+    else {
+      cout << "k = " << k << " ***Found response .. Breaking ****..\n";
+      break;
+    }
   }
+
+  if (k == 15) {
+    throw std::runtime_error ("Get Current Position of Filter wheel failed..\n");
+  }
+
   response[2] = '\0';
   cout << "response = " << response << "\n";
   return ((int)response[1]-48);

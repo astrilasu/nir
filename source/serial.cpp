@@ -34,6 +34,9 @@ int serial_recv(int fd, void *response, int length)
         perror("read");
     }
 
+    sleep (1);
+    tcflush (fd, TCIOFLUSH);
+
     return status;
 } // end serial_recv()
 

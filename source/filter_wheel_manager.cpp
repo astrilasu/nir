@@ -1,4 +1,5 @@
 #include "filter_wheel_manager.h"
+#include "logger.h"
 
 #include <iostream>
 #include <map>
@@ -6,18 +7,20 @@
 #include <stdexcept>
 using namespace std;
 
+extern Logger logger;
+
 void FilterWheelManager::verifyPosition (int pos1, int pos2)
 {
   int cur_pos = fw_[0]->getCurrentPosition ();
-  cout << "First filter wheel ..\n";
-  cout << "Cur position of first filter wheel = " << cur_pos << endl;
+  logger << "FIRST  FILTER WHEEL,\tcurrent position = " << cur_pos <<  "\t";
+  logger << "expected position = " << pos1 <<  "\n";
   if (cur_pos != pos1) {
     throw std::runtime_error ("Filter wheel not in the right position ..\n");
   }
 
-  cout << "Second filter wheel ..\n";
   cur_pos = fw_[1]->getCurrentPosition ();
-    cout << "Current position of second filter wheel = " << cur_pos << endl;
+  logger << "SECOND FILTER WHEEL,\tcurrent position = " << cur_pos <<  "\t";
+  logger << "expected position = " << pos2 <<  "\n";
   if (cur_pos != pos2) {
     throw std::runtime_error ("Filter wheel not in the right position ..\n");
   }
@@ -31,7 +34,7 @@ void FilterWheelManager::gotoFilter (int filter)
     fw_[0]->gotoFilter (999);
     fw_[1]->gotoFilter (999);
     sleep (6);
-    //verifyPosition (1, 1);
+    verifyPosition (1, 1);
     return;
   }
 
@@ -66,13 +69,12 @@ void FilterWheelManager::gotoFilter (int filter)
     fw_[0]->gotoFilter (999);
     fw_[1]->gotoFilterById (id2);
     sleep (6);
-    //verifyPosition (1, id2);
-
+    verifyPosition (1, id2);
   }
   else {
     fw_[0]->gotoFilterById (id1);
     fw_[1]->gotoFilter (999);
     sleep (6);
-    //verifyPosition (id1, 1);
+    verifyPosition (id1, 1);
   }
 }
