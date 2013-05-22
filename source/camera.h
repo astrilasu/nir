@@ -6,11 +6,8 @@ using namespace std;
 
 #include <ueye.h>
 
-
 #define MAX_INTENSITY 3700
 #define MAX_EXPOSURE 1999
-
-void get_system_time (string& time_str);
 
 class CameraWrapper
 {

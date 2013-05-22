@@ -21,7 +21,8 @@ add_executable (test_camera test_camera.cpp camera.cpp)
 add_executable (flat_field flat_field.cpp camera.cpp logger.cpp)
 add_executable (test_fits test_fits.cpp)
 add_executable (auto_exposure auto_exposure.cpp camera.cpp logger.cpp camera.h logger.h)
-add_executable (nir_main serial.cpp filterwheel.cpp camera.cpp main.cpp filter_wheel_manager.cpp logger.cpp)
+add_executable (nir_main main.cpp serial.cpp filterwheel.cpp camera.cpp filter_wheel_manager.cpp logger.cpp
+    systemtime.cpp)
 add_executable (test_logger test_logger.cpp logger.cpp dummy.cpp logger.h)
 
 
