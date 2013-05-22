@@ -17,8 +17,10 @@ using namespace std;
 #include "config_parser.hpp"
 #include "filterwheel.h"
 #include "filterwheel_manager.h"
+#include "systemtime.h"
 
 #include "fitsio.h"
+
 
 Logger logger;
 
@@ -31,8 +33,6 @@ void print_fits_error (int status)
 	}
 	return;
 }
-
-
 
 int main (int argc, char *argv[])
 {
@@ -54,7 +54,7 @@ int main (int argc, char *argv[])
   mkdir (argv[2], 0777);
 
   string time_str = "";
-  get_system_time (time_str);
+  utils::getSystemTime (time_str);
   ostringstream logfilename;
   logfilename << dir << "/log-auto-exposure-" << time_str << ".txt";
   logger.open (logfilename.str ());
@@ -64,6 +64,8 @@ int main (int argc, char *argv[])
   logger << "Over exposed percentage = " << over_exposed_ratio_par << endl;
 
 
+  ConfigParser* parser = NULL;
+  FilterWheel* fw[2] = {NULL, NULL};
   CameraWrapper* camera = NULL;
   try
   {
@@ -72,7 +74,6 @@ int main (int argc, char *argv[])
 
     /**** XML PARSER setup ****/
 
-    ConfigParser* parser = NULL;
     string inputfile = argv[1];
 
     parser = new ConfigParserDOM ();
@@ -122,7 +123,6 @@ int main (int argc, char *argv[])
     f2->openPort ();
     //  return 0;  
 
-    FilterWheel* fw[2];
     fw[0] = f1;
     fw[1] = f2;  
 
@@ -156,7 +156,7 @@ int main (int argc, char *argv[])
       // Giving some time for the filter wheel to initialize. 
       sleep (8);
 
-      get_system_time (time_str);
+     utils::getSystemTime (time_str);
 
       // At this point, auto exposure is enabled using the camera APIs.
       // auto exposure is disabled in the below function call, to fine tune exposure using our own algorithm
@@ -191,7 +191,7 @@ int main (int argc, char *argv[])
       int width = camera->getWidth ();
       int height = camera->getHeight ();
 
-      fitsfile *fptr;
+      fitsfile *fptr = NULL;
       long fpixel = 1;		
       long naxis = 2;
       long naxes[2] = {width, height};
@@ -226,7 +226,7 @@ int main (int argc, char *argv[])
       }
 
       float fexposure = exposure;
-      if(fits_update_key(fptr, TFLOAT, "EXPOSURE", &fexposure, "Exposure in milli seconds", &fitsstatus)) {
+      if(fits_update_key(fptr, TFLOAT, "EXPOSURE", &fexposure, (char*)"Exposure in milli seconds", &fitsstatus)) {
         print_fits_error(fitsstatus);
       }
 
@@ -239,6 +239,17 @@ int main (int argc, char *argv[])
   }
   catch (std::exception& e) {
     cout << "Exception : " << e.what () << endl;
+
+    if (parser) {
+      delete parser;
+    }
+
+    if (fw[0]) {
+      delete fw[0];
+    }
+    if (fw[1]) {
+      delete fw[1];
+    }
     if (camera) {
       delete camera;
     }
@@ -246,6 +257,15 @@ int main (int argc, char *argv[])
   }
 
   if (camera) {
+    if (parser) {
+      delete parser;
+    }
+    if (fw[0]) {
+      delete fw[0];
+    }
+    if (fw[1]) {
+      delete fw[1];
+    }
     delete camera;
   }
 
