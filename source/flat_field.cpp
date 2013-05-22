@@ -13,11 +13,13 @@ using namespace std;
 #include <dirent.h>
 #include <unistd.h>
 
+#include "systemtime.h"
 #include "camera.h"
 #include "fitsio.h"
+#include "logger.h"
 
-extern float over_exposed_ratio_par;
 
+Logger logger;
 
 void print_fits_error(int status)
 {
@@ -45,96 +47,35 @@ int main (int argc, char *argv[])
 
 
   string time_str = "";
-  get_system_time (time_str);
+  utils::getSystemTime (time_str);
 
 	int status = 0;
 	fitsfile* fptr = NULL;	
 
-  get_camera_list ();
+  CameraWrapper::getCameraList ();
 
 
-  HIDS h_cam = 0;
+  CameraWrapper* camera = NULL;
   try {
 
-    h_cam = setup_camera (&h_cam);
-    if (h_cam == -1) {
-      return -1;
-    }
-
-    if (set_display_mode (h_cam, IS_SET_DM_MONO) == -1) {
-      return -1;
-    }
-
-    UINT color_mode = IS_CM_MONO12;    
-    if (set_color_mode (h_cam, color_mode) == -1) {
-      cout << "Unable to se color mode ..\n";
-      return -1;
-    }
-
-    double fps = 0.;
-    if (get_fps (h_cam, &fps) != -1) {
-      cout << "New Frame rate = " << fps << endl;
-    }
-
-    int gamma;
-    if (get_gamma (h_cam, &gamma) == -1) {	  
-      return -1;
-    }
-    cout << "New gamma = " << gamma << endl;
-
-    int width = 0; 
-    int height = 0;
-    get_AOI (h_cam, width, height);
-
-    int bits_pp = 12; // bits per pixel
-
-    cout << "Bits per pixel = " << bits_pp << endl;
-
-    INT offset = 0;
-    is_Blacklevel (h_cam, IS_BLACKLEVEL_CMD_GET_OFFSET_DEFAULT, (void*)&offset, sizeof (offset));
-    cout << "Black level default offset = " << offset << endl;
-    is_Blacklevel (h_cam, IS_BLACKLEVEL_CMD_GET_OFFSET, (void*)&offset, sizeof (offset));
-    cout << "Black level  offset = " << offset << endl;
-
-    char* image = NULL;
-    int mem_id = 0;
-
-    if (setup_image_memory (h_cam, width, height, bits_pp, &image, &mem_id) == -1) {
-      return -1;
-    }
-
-    if (is_CaptureVideo (h_cam, IS_WAIT) != IS_SUCCESS) {
-      cout << "Failed to start live mode ..\n";
-      throw std::exception ();
-    }
-
+    camera = new CameraWrapper ();
 
     // SETTING MANUAL EXPOSURE
     double val = 0.;
-    if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_SHUTTER, &val, NULL) != IS_SUCCESS) {
-      cout << "Unable to set auto shutter ..\n";
-      throw std::exception ();
-    }
-
+    camera->setParameter (val, IS_SET_ENABLE_AUTO_SHUTTER, "AUTO SHUTTER");
+   
     // SETTING MANUAL FRAME RATE
     val = 0.;
-    if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_FRAMERATE, &val, NULL) != IS_SUCCESS) {
-      cout << "Unable to set auto shutter ..\n";
-      throw std::exception ();
-    }
+    camera->setParameter (val, IS_SET_ENABLE_AUTO_FRAMERATE, "AUTO FRAMERATE");
 
     // Setting frame rate to 0.5 to get the maximum exposure of 2 sec
-    fps = 0.5;
+    double fps = 0.5;
     double newfps = 0.0;
-
-    is_SetFrameRate (h_cam, fps, &newfps);
+    camera->setFps (fps, newfps);
 
     val = 0.;
     // SETTING AUTO GAIN
-    if (is_SetAutoParameter (h_cam, IS_SET_ENABLE_AUTO_GAIN, &val, NULL) != IS_SUCCESS) {
-      cout << "Unable to set auto white balance ..\n";
-      throw std::exception ();
-    }
+    camera->setParameter (val, IS_SET_ENABLE_AUTO_GAIN, "AUTO GAIN");
 
 #ifndef WIN32
     sleep (5);
@@ -157,7 +98,8 @@ int main (int argc, char *argv[])
     //750, 850
     //string exposures_str = "0.01 1 1.2 1.4 1.6 1.8 2.0 2.2 2.5 2.8 3.1 3.4 3.7 4.0 4.3 4.6 4.9 5.2";
     // dark frame
-    string exposures_str ="1 10 25 50 100 150 200 250 300 350 400 450 500 550 600 650 700 750 800 850 900 950 1000 1050 1100 1150 1200 1250 1300 1350 1400 1450 1500 1550 1600 1650 1700 1750 1800 1850 1900 1950 2000";
+    //string exposures_str ="1 10 25 50 100 150 200 250 300 350 400 450 500 550 600 650 700 750 800 850 900 950 1000 1050 1100 1150 1200 1250 1300 1350 1400 1450 1500 1550 1600 1650 1700 1750 1800 1850 1900 1950 2000";
+    string exposures_str ="1 10 25 50 100 150 200 250";
     istringstream istr (exposures_str);
     vector <float> exposures;
     float exp_val = 0.;
@@ -175,9 +117,9 @@ int main (int argc, char *argv[])
 
       double exposure = exposures[i];
 
-      get_system_time (time_str);
+      utils::getSystemTime (time_str);
 
-      set_exposure (h_cam, exposure);
+      camera->setExposure (exposure);
 
 #ifndef WIN32
       sleep (5);
@@ -186,16 +128,10 @@ int main (int argc, char *argv[])
 #endif
 
       cout << "Capturing image for exposure " << exposure << endl;
-      if (capture_image (h_cam) == -1) {
-        cout << "\tCapture Image failed ..\n";
-        throw std::exception ();
-      }
-      else {
-        cout << "\tImage Captured ..\n";
-      }
+      camera->captureImage ();
 
       exposure = 0.0;
-      get_current_exposure (h_cam, exposure);
+      camera->getCurrentExposure (exposure);
 
       ostringstream image_name;
       image_name << dir << "/flat-field-" << exposure << "-" << time_str << ".png";
@@ -204,12 +140,11 @@ int main (int argc, char *argv[])
       image_name_w.assign (tmp.begin (), tmp.end ());
       wstring image_type = L"png";
 
-      if (save_image (h_cam, image_name_w, image_type) == -1) {
-        cout << "\tCouldn't save image " << image_name.str () << endl;
-        return -1;
-      }
+      camera->saveImage (image_name_w, image_type);
 
 
+      int width = 0, height = 0;
+      camera->findAOI (width, height);
       fitsfile *fptr;
       long fpixel = 1;		
       long naxis = 2;
@@ -234,10 +169,12 @@ int main (int argc, char *argv[])
         print_fits_error (fitsstatus);
       }
 
+      
       cout << "Writing image ..\n";
       unsigned short* pixels = new unsigned short [width*height];
       unsigned int im_size = width*height*2;
 
+      char* image = camera->getImageMemory ();
       memcpy (pixels, image, height*width*2);
 
       if (fits_write_img (fptr, TUSHORT, fpixel, im_size, pixels, &fitsstatus)) {
@@ -245,7 +182,7 @@ int main (int argc, char *argv[])
       }
 
       float fexposure = exposure;
-      if(fits_update_key(fptr, TFLOAT, "EXPOSURE", &fexposure, "Exposure in milli seconds", &fitsstatus)) {
+      if(fits_update_key(fptr, TFLOAT, "EXPOSURE", &fexposure, (char*)"Exposure in milli seconds", &fitsstatus)) {
         print_fits_error(fitsstatus);
       }
 
@@ -253,23 +190,17 @@ int main (int argc, char *argv[])
         print_fits_error(fitsstatus);	
       }
     }
-
-    cout << "\n\nClosing the camera ..\n";
-
-    free_image_memory (h_cam, image, mem_id);
-
-    if (is_StopLiveVideo (h_cam, IS_FORCE_VIDEO_STOP) != IS_SUCCESS) {
-      cout << "Unable to stop live video ..\n";
-      throw std::exception ();
-    }
-
   } // end of try
   catch (std::exception& e) {
-    exit_camera (h_cam);		
+    if (camera) {
+      delete camera;
+    }
     return -1;
   }
 
-  exit_camera (h_cam);		
+  if (camera) {
+    delete camera;
+  }
 
   return 0;
 }

@@ -36,7 +36,7 @@ int main (int argc, char *argv[])
     char response[5] = "";
 
     for (int k=0; k<15; k++) {
-      char* command = "i2";
+      char* command = (char*)"i2";
       //sleep (3);
       status = serial_send (fd, command, 2);
       cout << "Write status = " << status << endl;

@@ -65,7 +65,7 @@ int FilterWheel::getCurrentPosition ()
   char response[5] = "";
   int k = 0;
   for (k = 0; k < 15; k++) {
-    char* command = "i2";
+    char* command = (char*)"i2";
     int status = serial_send (fd_, command, 2);
     cout << "Write status = " << status << endl;
 

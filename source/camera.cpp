@@ -104,7 +104,7 @@ void CameraWrapper::setupCamera ()
 
   if (is_CaptureVideo (h_cam, IS_WAIT) != IS_SUCCESS) {
     logger << "Failed to start live mode ..\n";
-    throw std::exception ();
+    throw std::runtime_error ("Failed to start live mode");
   }
   else {
     logger << " Started live mode ..\n";
@@ -152,13 +152,15 @@ void CameraWrapper::findAOI (int& width, int& height)
     throw std::runtime_error ("Unable to get AOI ..");
   }
 
+  width = rect_aoi.s32Width;
+  height = rect_aoi.s32Height;
 
-  logger << "--- AOI params ---\n";
-  logger << "x = " << rect_aoi.s32X << endl;
-  logger << "y = " << rect_aoi.s32Y << endl;
-  logger << "width = " << (width = rect_aoi.s32Width) << endl;
-  logger << "height = " << (height = rect_aoi.s32Height) << endl;
-  logger << "-------------------\n";
+  //logger << "--- AOI params ---\n";
+  //logger << "x = " << rect_aoi.s32X << endl;
+  //logger << "y = " << rect_aoi.s32Y << endl;
+  //logger << "width = " << (width = rect_aoi.s32Width) << endl;
+  //logger << "height = " << (height = rect_aoi.s32Height) << endl;
+  //logger << "-------------------\n";
 
 
   this->width = width;

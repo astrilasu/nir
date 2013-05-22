@@ -1,9 +1,12 @@
 #include <iostream>
 using namespace std;
 
+#include "logger.h"
 #include "config_parser.hpp"
 #include "filterwheel.h"
-#include "filterwheel_manager.h"
+#include "filter_wheel_manager.h"
+
+Logger logger;
 
 int main (int argc, char *argv[])
 {
@@ -11,6 +14,7 @@ int main (int argc, char *argv[])
     cout << "Enter two arguments 1) config file 2) go to filter {450, 532, 671, 750, 850, 920, 1050} ..\n";
     return -1;
   }
+
   ConfigParser* parser = NULL;
   string inputfile = argv[1];
 
@@ -22,8 +26,8 @@ int main (int argc, char *argv[])
       return -1;
     }
   }
-  catch (MyException& e) {
-    cout << e.m_error_message << endl;
+  catch (std::exception& e) {
+    cout << e.what () << endl;
     return -1;
   }
 

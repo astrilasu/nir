@@ -12,6 +12,7 @@ using namespace std;
 #include "camera.h"
 #include "logger.h"
 #include "fitsio.h"
+#include "systemtime.h"
 
 Logger logger;
 
@@ -51,7 +52,7 @@ int main (int argc, char *argv[])
     // Giving some time for the filter wheel to initialize. 
     sleep (8);
 
-    get_system_time (time_str);
+    utils::getSystemTime (time_str);
 
     // At this point, auto exposure is enabled using the camera APIs.
     // auto exposure is disabled in the below function call, to fine tune exposure using our own algorithm
@@ -113,7 +114,7 @@ int main (int argc, char *argv[])
     }
 
     float fexposure = exposure;
-    if(fits_update_key(fptr, TFLOAT, "EXPOSURE", &fexposure, "Exposure in milli seconds", &fitsstatus)) {
+    if(fits_update_key(fptr, TFLOAT, "EXPOSURE", &fexposure, (char*)"Exposure in milli seconds", &fitsstatus)) {
       print_fits_error(fitsstatus);
     }
 
