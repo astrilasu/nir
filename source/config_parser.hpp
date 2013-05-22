@@ -5,6 +5,7 @@
 #include <vector>
 #include <fstream>
 #include <map>
+#include <stdexcept>
 using namespace std;
 
 #include <xercesc/dom/DOM.hpp>
@@ -19,28 +20,17 @@ using namespace xercesc;
 using boost::lexical_cast;
 using boost::bad_lexical_cast;
 
-class MyException
-{
-	public:
-		MyException()
-    {
-		}
-		MyException(string error_message)
-    {
-			m_error_message = error_message;
-		}
-		string m_error_message;
-};
 class ConfigParser
 {
 	public:
 		ConfigParser(){ }
+		virtual ~ConfigParser(){ }
 		virtual bool parse()=0;
 		void setInputfile(string& config_file)
     {
       ifstream ifile (config_file.c_str ());
       if (!ifile) {
-        throw MyException ("Input file doesn't exist");
+        throw std::runtime_error ("Input file doesn't exist");
       }
       ifile.close ();
 			m_config_file = config_file;
@@ -94,6 +84,7 @@ class ConfigParser
     string fw_ports[2];
     int fw_bauds[2];
 };
+
 class ConfigParserDOM : public ConfigParser
 {
 	public:
@@ -129,8 +120,8 @@ class ConfigParserDOM : public ConfigParser
 			}
 		}
 	private:
-    bool getFilterWheelConfig (DOMNode *node, int id);
-		bool getExposureSettings(DOMNode *node);
+    void getFilterWheelConfig (DOMNode *node, int id);
+		void getExposureSettings(DOMNode *node);
 		xercesc::XercesDOMParser *m_parser;
 
 		XMLCh *attr_exposure;
@@ -188,9 +179,10 @@ bool ConfigParserDOM::parse()
 		XMLString::release(&message);
 		status = false;
 	}
-	return status;
+  return status;
 }
-bool ConfigParserDOM::getFilterWheelConfig (DOMNode *node, int id)
+
+void ConfigParserDOM::getFilterWheelConfig (DOMNode *node, int id)
 {
   assert (id < 2 && "               <<< Only two filter wheels should be configured in the xml file.. Please check.. >>> ");
 
@@ -209,7 +201,6 @@ bool ConfigParserDOM::getFilterWheelConfig (DOMNode *node, int id)
     }
   }
 
-  bool status = true;
 	DOMNodeList *children = node->getChildNodes();
   char error_message[1024];
 
@@ -225,7 +216,7 @@ bool ConfigParserDOM::getFilterWheelConfig (DOMNode *node, int id)
 
 		if(strcmp(tag_name, "filter") != 0) {
 			sprintf(error_message,"<filter> node missing at position %d in element <ExposureSettings>", counter);
-			throw MyException(error_message); 
+			throw std::runtime_error (error_message); 
 		}
 
     // slot attribute
@@ -235,7 +226,7 @@ bool ConfigParserDOM::getFilterWheelConfig (DOMNode *node, int id)
 		const char *s = XMLString::transcode (slot_attr_element); 
 		if (strlen (s)==0) {
 			sprintf(error_message, "slot attribute missing at <filter> node # %d in <FilterWheel>", counter);
-			throw MyException (error_message);
+			throw std::runtime_error (error_message);
 		}
 		try {
 			double val = lexical_cast<double>(s);
@@ -244,7 +235,7 @@ bool ConfigParserDOM::getFilterWheelConfig (DOMNode *node, int id)
 		}
 		catch(bad_lexical_cast& e){
 			sprintf(error_message, "Invalid value for slot at node # %d in <ExposureSettings>", counter);
-			throw MyException(error_message);
+			throw std::runtime_error(error_message);
 		}
 
     // wavelength attribute
@@ -253,7 +244,7 @@ bool ConfigParserDOM::getFilterWheelConfig (DOMNode *node, int id)
 		s = XMLString::transcode (wavelength_attr_element); 
 		if (strlen (s)==0) {
 			sprintf(error_message, "wavelength attribute missing at <filter> node # %d in <FilterWheel>", counter);
-			throw MyException (error_message);
+			throw std::runtime_error (error_message);
 		}
 		try {
 			double val = lexical_cast<double>(s);
@@ -262,15 +253,15 @@ bool ConfigParserDOM::getFilterWheelConfig (DOMNode *node, int id)
 		}
 		catch(bad_lexical_cast& e) {
 			sprintf(error_message, "Invalid value for slot at node # %d in <ExposureSettings>", counter);
-			throw MyException(error_message);
+			throw std::runtime_error(error_message);
 		}
     getFilterWheelById (id)[slot] = wavelength;
     counter++;
   }
   cout << "Number of filters = " << getFilterWheelById (id).size () << endl;
-  return status;
 }
-bool ConfigParserDOM::getExposureSettings (DOMNode *node)
+
+void ConfigParserDOM::getExposureSettings (DOMNode *node)
 {
 	cout << "Node = ExposureSettings\n";
 	
@@ -288,7 +279,7 @@ bool ConfigParserDOM::getExposureSettings (DOMNode *node)
 
 		if(strcmp(tag_name, "filter") != 0) {
 			sprintf(error_message,"<filter> node missing at position %d in element <ExposureSettings>", counter);
-			throw MyException(error_message); 
+			throw std::runtime_error(error_message); 
 		}
 
 		DOMElement *element = dynamic_cast<DOMElement*>(item);
@@ -301,7 +292,7 @@ bool ConfigParserDOM::getExposureSettings (DOMNode *node)
 		const char *s = XMLString::transcode(exposure_attr_element); 
 		if (strlen(s)==0) {
 			sprintf(error_message, "wavelength attribute missing at <filter> node # %d in <ExposureSettings>", counter);
-			throw MyException(error_message);
+			throw std::runtime_error(error_message);
 		}
 		try {
 			wavelength = lexical_cast<int> (s);
@@ -309,13 +300,13 @@ bool ConfigParserDOM::getExposureSettings (DOMNode *node)
 		}
 		catch (bad_lexical_cast& e) {
 			sprintf(error_message, "Invalid value for duration at node # %d in <ExposureSettings>", counter);
-			throw MyException(error_message);
+			throw std::runtime_error(error_message);
 		}
 
 		s = XMLString::transcode (exposure_attr_element); 
 		if(strlen(s)==0) {
 			sprintf(error_message, "duration attribute missing at <filter> node # %d in <ExposureSettings>", counter);
-			throw MyException(error_message);
+			throw std::runtime_error(error_message);
 		}
 		try {
 			duration = lexical_cast<int>(s);
@@ -323,7 +314,7 @@ bool ConfigParserDOM::getExposureSettings (DOMNode *node)
 		}
 		catch (bad_lexical_cast& e) {
 			sprintf(error_message, "Invalid value for duration at node # %d in <ExposureSettings>", counter);
-			throw MyException(error_message);
+			throw std::runtime_error(error_message);
 		}
     exposure.push_back (make_pair <int, int> (wavelength, duration));
 		counter++;
