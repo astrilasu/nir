@@ -82,7 +82,7 @@ int FilterWheel::getCurrentPosition ()
       cout << "k = " << k << " No response.. Trying again ..\n";
     }
     else {
-      cout << "k = " << k << " ***Found response .. Breaking ****..\n";
+      cout << "k = " << k << " Got response ..\n";
       break;
     }
   }
