@@ -16,7 +16,7 @@ using namespace std;
 #include "logger.h"
 #include "config_parser.hpp"
 #include "filterwheel.h"
-#include "filterwheel_manager.h"
+#include "filter_wheel_manager.h"
 #include "systemtime.h"
 
 #include "fitsio.h"
