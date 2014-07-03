@@ -20,7 +20,11 @@ add_executable (test_filterwheel test_filterwheel.cpp filterwheel.cpp filterwhee
 add_executable (flat_field flat_field.cpp camera.cpp logger.cpp systemtime.cpp)
 add_executable (test_fits test_fits.cpp)
 add_executable (auto_exposure auto_exposure.cpp camera.cpp logger.cpp systemtime.cpp camera.h logger.h)
+add_executable (test_camera test_camera.cpp camera.cpp logger.cpp systemtime.cpp camera.h logger.h)
+add_executable (test_xs test_xs.cpp)
 add_executable (nir_main main.cpp serial.cpp filterwheel.cpp camera.cpp filter_wheel_manager.cpp logger.cpp
+    systemtime.cpp)
+add_executable (stereo_main stereomain.cpp serial.cpp filterwheel.cpp camera.cpp filter_wheel_manager.cpp logger.cpp
     systemtime.cpp)
 add_executable (test_logger test_logger.cpp logger.cpp dummy.cpp logger.h)
 
@@ -29,4 +33,7 @@ target_link_libraries (test_filterwheel xerces-c)
 target_link_libraries (test_fits cfitsio)
 target_link_libraries (flat_field ueye_api cfitsio)
 target_link_libraries (auto_exposure ueye_api cfitsio)
+target_link_libraries (test_camera ueye_api cfitsio)
+target_link_libraries (test_xs ueye_api)
 target_link_libraries (nir_main ueye_api cfitsio xerces-c)
+target_link_libraries (stereo_main ueye_api cfitsio xerces-c)
