@@ -20,7 +20,7 @@ CameraWrapper::CameraWrapper ()
   h_cam = 0;
   width = height = -1;
   mem_id = -1;
-  bits_pp = 12;
+  bits_pp = 24;
   image = NULL;
   over_exposed_ratio_par = 1.0;
 
@@ -95,8 +95,8 @@ void CameraWrapper::setupCamera ()
     logger << "Camera handle = " << h_cam << endl;
   }
 
-  setDisplayMode (IS_SET_DM_MONO);
-  setColorMode (IS_CM_MONO12);
+  //setDisplayMode (IS_SET_DM_MONO);
+  //setColorMode (IS_CM_MONO12);
 
   findAOI (this->width, this->height);
   setupImageMemory ();
@@ -111,15 +111,15 @@ void CameraWrapper::setupCamera ()
   }
 
   double val = 1.0;
-  setParameter (val, IS_SET_ENABLE_AUTO_SHUTTER, "AUTO SHUTTER");
+  //setParameter (val, IS_SET_ENABLE_AUTO_SHUTTER, "AUTO SHUTTER");
 
   val = 1.0;
-  setParameter (val, IS_SET_ENABLE_AUTO_FRAMERATE, "AUTO FRAME RATE");
+  //setParameter (val, IS_SET_ENABLE_AUTO_FRAMERATE, "AUTO FRAME RATE");
 
   val = 0.0;
-  setParameter (val, IS_SET_ENABLE_AUTO_GAIN, "AUTO GAIN");
+  //setParameter (val, IS_SET_ENABLE_AUTO_GAIN, "AUTO GAIN");
 
-  setMasterGain (0);
+  //setMasterGain (0);
 }
 
 void CameraWrapper::exitCamera ()

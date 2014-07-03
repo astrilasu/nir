@@ -79,10 +79,10 @@ class ConfigParser
 		string m_error_message;
 
   protected:
-    map <int, int> filters[2];
+    map <int, int> filters[4];
     vector <pair <int, int> > exposure;
-    string fw_ports[2];
-    int fw_bauds[2];
+    string fw_ports[4];
+    int fw_bauds[4];
 };
 
 class ConfigParserDOM : public ConfigParser
@@ -184,7 +184,7 @@ bool ConfigParserDOM::parse()
 
 void ConfigParserDOM::getFilterWheelConfig (DOMNode *node, int id)
 {
-  assert (id < 2 && "               <<< Only two filter wheels should be configured in the xml file.. Please check.. >>> ");
+  assert (id < 4 && "               <<< Only four filter wheels should be configured in the xml file.. Please check.. >>> ");
 
   DOMNamedNodeMap* nodemap = node->getAttributes ();
   for (XMLSize_t i = 0; i < nodemap->getLength (); i++) {

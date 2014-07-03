@@ -1,0 +1,28 @@
+<NIR>
+  <FilterWheel port="/dev/ttyUSB0" baudrate="9600">
+    <filter slot = "1" wavelength = "999" />
+    <filter slot = "2" wavelength = "750" />
+    <filter slot = "3" wavelength = "671" />
+    <filter slot = "4" wavelength = "532" />
+    <filter slot = "5" wavelength = "450" />
+  </FilterWheel>
+  <FilterWheel port="/dev/ttyUSB1" baudrate="9600">
+    <filter slot = "1" wavelength = "999" />
+    <filter slot = "2" wavelength = "850" />
+    <filter slot = "3" wavelength = "920" />
+    <filter slot = "4" wavelength = "1050" />
+  </FilterWheel>
+  <FilterWheel port="/dev/ttyUSB2" baudrate="9600">
+    <filter slot = "1" wavelength = "999" />
+    <filter slot = "2" wavelength = "750" />
+    <filter slot = "3" wavelength = "671" />
+    <filter slot = "4" wavelength = "532" />
+    <filter slot = "5" wavelength = "450" />
+  </FilterWheel>
+  <FilterWheel port="/dev/ttyUSB3" baudrate="9600">
+    <filter slot = "1" wavelength = "999" />
+    <filter slot = "2" wavelength = "850" />
+    <filter slot = "3" wavelength = "920" />
+    <filter slot = "4" wavelength = "1050" />
+  </FilterWheel>
+</NIR>
